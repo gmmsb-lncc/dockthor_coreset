@@ -1,0 +1,9 @@
+## DockThor qualification set: 2jdm
+
+output-dir="vcoreset_run"
+ligand="ligand/2jdm_ligand.top"
+receptor="receptor/2jdm.in"
+cofactors-path="cofactor/2jdm"
+grid-size=[12.169,12.169,12.169]
+grid-center=[11.2825,3.5155,-4.0835]
+grid-rstep=0.25

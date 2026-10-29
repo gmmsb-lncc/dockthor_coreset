@@ -1,0 +1,8 @@
+## DockThor qualification set: 1igj
+
+output-dir="vcoreset_run"
+ligand="ligand/1igj_ligand.top"
+receptor="receptor/1igj.in"
+grid-size=[19.505,19.505,19.505]
+grid-center=[-14.373,28.3195,29.112]
+grid-rstep=0.25

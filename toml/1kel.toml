@@ -1,0 +1,8 @@
+## DockThor qualification set: 1kel
+
+output-dir="vcoreset_run"
+ligand="ligand/1kel_ligand.top"
+receptor="receptor/1kel.in"
+grid-size=[15.962,15.962,15.962]
+grid-center=[-24.0725,38.524,17.8875]
+grid-rstep=0.25

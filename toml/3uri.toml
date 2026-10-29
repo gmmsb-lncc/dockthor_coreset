@@ -1,0 +1,8 @@
+## DockThor qualification set: 3uri
+
+output-dir="vcoreset_run"
+ligand="ligand/3uri_ligand.top"
+receptor="receptor/3uri.in"
+grid-size=[25.365,25.365,25.365]
+grid-center=[1.76,31.4795,18.549]
+grid-rstep=0.285

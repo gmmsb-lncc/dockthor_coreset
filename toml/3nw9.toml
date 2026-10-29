@@ -1,0 +1,9 @@
+## DockThor qualification set: 3nw9
+
+output-dir="vcoreset_run"
+ligand="ligand/3nw9_ligand.top"
+receptor="receptor/3nw9.in"
+cofactors-path="cofactor/3nw9"
+grid-size=[24.036,24.036,24.036]
+grid-center=[-2.7365,16.146,13.6875]
+grid-rstep=0.2701

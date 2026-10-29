@@ -1,0 +1,8 @@
+## DockThor qualification set: 3acw
+
+output-dir="vcoreset_run"
+ligand="ligand/3acw_ligand.top"
+receptor="receptor/3acw.in"
+grid-size=[19.19,19.19,19.19]
+grid-center=[56.8125,15.468,52.481]
+grid-rstep=0.25

@@ -1,0 +1,9 @@
+## DockThor qualification set: 2v7a
+
+output-dir="vcoreset_run"
+ligand="ligand/2v7a_ligand.top"
+receptor="receptor/2v7a.in"
+cofactors-path="cofactor/2v7a"
+grid-size=[22.058,22.058,22.058]
+grid-center=[-41.9715,-52.317,-10.0035]
+grid-rstep=0.25

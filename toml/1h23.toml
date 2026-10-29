@@ -1,0 +1,8 @@
+## DockThor qualification set: 1h23
+
+output-dir="vcoreset_run"
+ligand="ligand/1h23_ligand.top"
+receptor="receptor/1h23.in"
+grid-size=[21.922,21.922,21.922]
+grid-center=[2.4215,63.1545,67.863]
+grid-rstep=0.25

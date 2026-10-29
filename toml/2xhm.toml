@@ -1,0 +1,9 @@
+## DockThor qualification set: 2xhm
+
+output-dir="vcoreset_run"
+ligand="ligand/2xhm_ligand.top"
+receptor="receptor/2xhm.in"
+cofactors-path="cofactor/2xhm"
+grid-size=[19.047,19.047,19.047]
+grid-center=[-9.0095,23.7835,-13.187]
+grid-rstep=0.25

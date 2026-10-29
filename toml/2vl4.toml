@@ -1,0 +1,8 @@
+## DockThor qualification set: 2vl4
+
+output-dir="vcoreset_run"
+ligand="ligand/2vl4_ligand.top"
+receptor="receptor/2vl4.in"
+grid-size=[12.314,12.314,12.314]
+grid-center=[27.415,47.191,-1.063]
+grid-rstep=0.25

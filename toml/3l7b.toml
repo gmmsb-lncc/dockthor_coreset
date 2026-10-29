@@ -1,0 +1,8 @@
+## DockThor qualification set: 3l7b
+
+output-dir="vcoreset_run"
+ligand="ligand/3l7b_ligand.top"
+receptor="receptor/3l7b.in"
+grid-size=[13.693,13.693,13.693]
+grid-center=[34.507,21.9595,28.1165]
+grid-rstep=0.25

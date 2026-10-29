@@ -1,0 +1,8 @@
+## DockThor qualification set: 2qbp
+
+output-dir="vcoreset_run"
+ligand="ligand/2qbp_ligand.top"
+receptor="receptor/2qbp.in"
+grid-size=[23.739,23.739,23.739]
+grid-center=[48.8415,9.2815,3.8335]
+grid-rstep=0.25

@@ -1,0 +1,8 @@
+## DockThor qualification set: 2obf
+
+output-dir="vcoreset_run"
+ligand="ligand/2obf_ligand.top"
+receptor="receptor/2obf.in"
+grid-size=[20.031,20.031,20.031]
+grid-center=[27.5685,44.6335,15.6115]
+grid-rstep=0.25

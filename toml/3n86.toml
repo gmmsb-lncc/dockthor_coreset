@@ -1,0 +1,8 @@
+## DockThor qualification set: 3n86
+
+output-dir="vcoreset_run"
+ligand="ligand/3n86_ligand.top"
+receptor="receptor/3n86.in"
+grid-size=[18.886,18.886,18.886]
+grid-center=[29.204,26.556,-0.6015]
+grid-rstep=0.25

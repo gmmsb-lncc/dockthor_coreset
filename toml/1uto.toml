@@ -1,0 +1,9 @@
+## DockThor qualification set: 1uto
+
+output-dir="vcoreset_run"
+ligand="ligand/1uto_ligand.top"
+receptor="receptor/1uto.in"
+cofactors-path="cofactor/1uto"
+grid-size=[13.019,13.019,13.019]
+grid-center=[45.149,20.4505,51.4205]
+grid-rstep=0.25

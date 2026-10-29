@@ -1,0 +1,8 @@
+## DockThor qualification set: 1yc1
+
+output-dir="vcoreset_run"
+ligand="ligand/1yc1_ligand.top"
+receptor="receptor/1yc1.in"
+grid-size=[15.312,15.312,15.312]
+grid-center=[0.586,34.033,-4.006]
+grid-rstep=0.25

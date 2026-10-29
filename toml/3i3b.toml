@@ -1,0 +1,9 @@
+## DockThor qualification set: 3i3b
+
+output-dir="vcoreset_run"
+ligand="ligand/3i3b_ligand.top"
+receptor="receptor/3i3b.in"
+cofactors-path="cofactor/3i3b"
+grid-size=[12.649,12.649,12.649]
+grid-center=[-9.8265,-29.337,-28.1915]
+grid-rstep=0.25

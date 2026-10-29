@@ -1,0 +1,8 @@
+## DockThor qualification set: 3dxg
+
+output-dir="vcoreset_run"
+ligand="ligand/3dxg_ligand.top"
+receptor="receptor/3dxg.in"
+grid-size=[14.448,14.448,14.448]
+grid-center=[37.929,-1.5225,13.39]
+grid-rstep=0.25

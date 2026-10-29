@@ -1,0 +1,9 @@
+## DockThor qualification set: 1n1m
+
+output-dir="vcoreset_run"
+ligand="ligand/1n1m_ligand.top"
+receptor="receptor/1n1m.in"
+cofactors-path="cofactor/1n1m"
+grid-size=[14.73,14.73,14.73]
+grid-center=[81.345,75.3585,97.9015]
+grid-rstep=0.25

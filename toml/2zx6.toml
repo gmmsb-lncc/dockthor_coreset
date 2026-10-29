@@ -1,0 +1,8 @@
+## DockThor qualification set: 2zx6
+
+output-dir="vcoreset_run"
+ligand="ligand/2zx6_ligand.top"
+receptor="receptor/2zx6.in"
+grid-size=[17.542,17.542,17.542]
+grid-center=[-0.6285,25.4805,27.358]
+grid-rstep=0.25

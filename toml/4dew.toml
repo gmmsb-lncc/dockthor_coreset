@@ -1,0 +1,8 @@
+## DockThor qualification set: 4dew
+
+output-dir="vcoreset_run"
+ligand="ligand/4dew_ligand.top"
+receptor="receptor/4dew.in"
+grid-size=[17.511,17.511,17.511]
+grid-center=[20.874,41.6585,38.6305]
+grid-rstep=0.25

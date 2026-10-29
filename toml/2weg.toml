@@ -1,0 +1,9 @@
+## DockThor qualification set: 2weg
+
+output-dir="vcoreset_run"
+ligand="ligand/2weg_ligand.top"
+receptor="receptor/2weg.in"
+cofactors-path="cofactor/2weg"
+grid-size=[12.127,12.127,12.127]
+grid-center=[16.419,3.8205,15.8985]
+grid-rstep=0.25

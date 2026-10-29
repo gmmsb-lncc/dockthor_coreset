@@ -1,0 +1,8 @@
+## DockThor qualification set: 3imc
+
+output-dir="vcoreset_run"
+ligand="ligand/3imc_ligand.top"
+receptor="receptor/3imc.in"
+grid-size=[12.659,12.659,12.659]
+grid-center=[13.5245,9.7305,-2.569]
+grid-rstep=0.25

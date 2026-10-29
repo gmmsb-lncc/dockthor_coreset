@@ -1,0 +1,8 @@
+## DockThor qualification set: 1w4o
+
+output-dir="vcoreset_run"
+ligand="ligand/1w4o_ligand.top"
+receptor="receptor/1w4o.in"
+grid-size=[16.376,16.376,16.376]
+grid-center=[37.2715,-0.324,12.6595]
+grid-rstep=0.25

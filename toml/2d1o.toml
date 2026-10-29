@@ -1,0 +1,9 @@
+## DockThor qualification set: 2d1o
+
+output-dir="vcoreset_run"
+ligand="ligand/2d1o_ligand.top"
+receptor="receptor/2d1o.in"
+cofactors-path="cofactor/2d1o"
+grid-size=[24.063,24.063,24.063]
+grid-center=[29.1275,7.547,14.9405]
+grid-rstep=0.2704

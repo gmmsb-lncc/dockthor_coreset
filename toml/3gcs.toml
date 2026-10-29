@@ -1,0 +1,8 @@
+## DockThor qualification set: 3gcs
+
+output-dir="vcoreset_run"
+ligand="ligand/3gcs_ligand.top"
+receptor="receptor/3gcs.in"
+grid-size=[21.327,21.327,21.327]
+grid-center=[-18.3625,-1.9195,20.065]
+grid-rstep=0.25

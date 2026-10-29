@@ -1,0 +1,8 @@
+## DockThor qualification set: 3b68
+
+output-dir="vcoreset_run"
+ligand="ligand/3b68_ligand.top"
+receptor="receptor/3b68.in"
+grid-size=[18.477,18.477,18.477]
+grid-center=[27.3835,3.432,8.4905]
+grid-rstep=0.25

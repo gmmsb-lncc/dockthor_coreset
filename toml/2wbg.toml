@@ -1,0 +1,8 @@
+## DockThor qualification set: 2wbg
+
+output-dir="vcoreset_run"
+ligand="ligand/2wbg_ligand.top"
+receptor="receptor/2wbg.in"
+grid-size=[21.384,21.384,21.384]
+grid-center=[4.264,5.749,8.364]
+grid-rstep=0.25

@@ -1,0 +1,8 @@
+## DockThor qualification set: 3zsx
+
+output-dir="vcoreset_run"
+ligand="ligand/3zsx_ligand.top"
+receptor="receptor/3zsx.in"
+grid-size=[16.379,16.379,16.379]
+grid-center=[-11.365,45.6865,1.8225]
+grid-rstep=0.25

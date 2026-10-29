@@ -1,0 +1,8 @@
+## DockThor qualification set: 3gbb
+
+output-dir="vcoreset_run"
+ligand="ligand/3gbb_ligand.top"
+receptor="receptor/3gbb.in"
+grid-size=[13.61,13.61,13.61]
+grid-center=[1.2715,43.295,2.572]
+grid-rstep=0.25

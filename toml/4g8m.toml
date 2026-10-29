@@ -1,0 +1,8 @@
+## DockThor qualification set: 4g8m
+
+output-dir="vcoreset_run"
+ligand="ligand/4g8m_ligand.top"
+receptor="receptor/4g8m.in"
+grid-size=[11.622,11.622,11.622]
+grid-center=[7.4565,26.867,19.535]
+grid-rstep=0.25

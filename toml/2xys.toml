@@ -1,0 +1,8 @@
+## DockThor qualification set: 2xys
+
+output-dir="vcoreset_run"
+ligand="ligand/2xys_ligand.top"
+receptor="receptor/2xys.in"
+grid-size=[16.151,16.151,16.151]
+grid-center=[-42.6205,5.498,-16.344]
+grid-rstep=0.25

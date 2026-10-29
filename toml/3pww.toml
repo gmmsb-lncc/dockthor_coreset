@@ -1,0 +1,8 @@
+## DockThor qualification set: 3pww
+
+output-dir="vcoreset_run"
+ligand="ligand/3pww_ligand.top"
+receptor="receptor/3pww.in"
+grid-size=[21.471,21.471,21.471]
+grid-center=[-1.9405,4.9585,10.047]
+grid-rstep=0.25

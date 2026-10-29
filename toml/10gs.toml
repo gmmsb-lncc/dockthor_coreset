@@ -1,0 +1,8 @@
+## DockThor qualification set: 10gs
+
+output-dir="vcoreset_run"
+ligand="ligand/10gs_ligand.top"
+receptor="receptor/10gs.in"
+grid-size=[19.274,19.274,19.274]
+grid-center=[9.941,6.1335,27.505]
+grid-rstep=0.25

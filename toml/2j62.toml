@@ -1,0 +1,8 @@
+## DockThor qualification set: 2j62
+
+output-dir="vcoreset_run"
+ligand="ligand/2j62_ligand.top"
+receptor="receptor/2j62.in"
+grid-size=[17.782,17.782,17.782]
+grid-center=[32.307,41.8695,19.5715]
+grid-rstep=0.25

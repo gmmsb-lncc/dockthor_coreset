@@ -1,0 +1,8 @@
+## DockThor qualification set: 4djv
+
+output-dir="vcoreset_run"
+ligand="ligand/4djv_ligand.top"
+receptor="receptor/4djv.in"
+grid-size=[19.833,19.833,19.833]
+grid-center=[24.3875,10.4135,21.429]
+grid-rstep=0.25

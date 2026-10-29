@@ -1,0 +1,9 @@
+## DockThor qualification set: 4gqq
+
+output-dir="vcoreset_run"
+ligand="ligand/4gqq_ligand.top"
+receptor="receptor/4gqq.in"
+cofactors-path="cofactor/4gqq"
+grid-size=[16.657,16.657,16.657]
+grid-center=[7.7525,-18.4425,116.7615]
+grid-rstep=0.25

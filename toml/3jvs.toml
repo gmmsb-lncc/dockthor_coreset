@@ -1,0 +1,8 @@
+## DockThor qualification set: 3jvs
+
+output-dir="vcoreset_run"
+ligand="ligand/3jvs_ligand.top"
+receptor="receptor/3jvs.in"
+grid-size=[18.933,18.933,18.933]
+grid-center=[31.2855,-2.2195,21.4375]
+grid-rstep=0.25

@@ -1,0 +1,8 @@
+## DockThor qualification set: 2gss
+
+output-dir="vcoreset_run"
+ligand="ligand/2gss_ligand.top"
+receptor="receptor/2gss.in"
+grid-size=[16.238,16.238,16.238]
+grid-center=[7.4265,3.8035,28.027]
+grid-rstep=0.25

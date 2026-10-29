@@ -1,0 +1,9 @@
+## DockThor qualification set: 3d4z
+
+output-dir="vcoreset_run"
+ligand="ligand/3d4z_ligand.top"
+receptor="receptor/3d4z.in"
+cofactors-path="cofactor/3d4z"
+grid-size=[12.514,12.514,12.514]
+grid-center=[30.4685,66.191,8.835]
+grid-rstep=0.25

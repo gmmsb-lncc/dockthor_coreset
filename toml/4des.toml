@@ -1,0 +1,8 @@
+## DockThor qualification set: 4des
+
+output-dir="vcoreset_run"
+ligand="ligand/4des_ligand.top"
+receptor="receptor/4des.in"
+grid-size=[16.406,16.406,16.406]
+grid-center=[22.153,0.603,-6.643]
+grid-rstep=0.25

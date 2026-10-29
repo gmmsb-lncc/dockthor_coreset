@@ -1,0 +1,8 @@
+## DockThor qualification set: 3kgp
+
+output-dir="vcoreset_run"
+ligand="ligand/3kgp_ligand.top"
+receptor="receptor/3kgp.in"
+grid-size=[12.851,12.851,12.851]
+grid-center=[-29.4705,88.3075,-11.114]
+grid-rstep=0.25

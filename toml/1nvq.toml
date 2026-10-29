@@ -1,0 +1,8 @@
+## DockThor qualification set: 1nvq
+
+output-dir="vcoreset_run"
+ligand="ligand/1nvq_ligand.top"
+receptor="receptor/1nvq.in"
+grid-size=[18.236,18.236,18.236]
+grid-center=[5.226,6.4915,15.8475]
+grid-rstep=0.25

@@ -1,0 +1,8 @@
+## DockThor qualification set: 1e66
+
+output-dir="vcoreset_run"
+ligand="ligand/1e66_ligand.top"
+receptor="receptor/1e66.in"
+grid-size=[15.066,15.066,15.066]
+grid-center=[4.435,66.8475,65.766]
+grid-rstep=0.25
