@@ -16,6 +16,8 @@ The qualification set directory is expected to contain:
 `--run-path <dockthor>` runs DockThor, from the set root, on every `<pdb>.toml`
 found there, then writes a summary CSV with the execution time and the success
 rates of every executed system. Both can be given in the same call.
+`--git-url <repo>` clones the set from a git repository (GitHub or any git URL)
+and runs the same workflow on the clone.
 
 Examples:
     python3 scripts/qualification_set.py ~/vcoreset-fix --generate -o ~/results/vcoreset
@@ -24,6 +26,8 @@ Examples:
         --run-path build/bin/dockthor --systems 1bcu 10gs
     python3 scripts/qualification_set.py ~/vcoreset-fix --generate -o steadystate --output-toml-path tomls/ss \\
         --set success-rate-RMSD=2.0 --run-path build/bin/dockthor
+    python3 scripts/qualification_set.py --git-url https://github.com/<org>/<dataset>.git --generate -o steadystate \\
+        --set success-rate-RMSD=2.0 --run-path build/bin/dockthor --mpi --np 2
 """
 
 import argparse
@@ -67,6 +71,45 @@ def parse_set_option(text: str) -> tuple[str, object]:
     except tomllib.TOMLDecodeError:
         value = raw
     return key.strip().lstrip("-"), value
+
+
+def git(*command: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
+    print("    $ git " + shlex.join(command), flush=True)
+    return subprocess.run(["git", "-c", "advice.detachedHead=false", *command], cwd=cwd)
+
+
+def repo_name(url: str) -> str:
+    """https://github.com/org/set.git, git@github.com:org/set.git or /path/set -> set"""
+    return re.split(r"[/:]", url.rstrip("/"))[-1].removesuffix(".git")
+
+
+def clone_dataset(args) -> Path:
+    """Clone (or reuse) the repository of --git-url and return the set root inside it."""
+    clone_dir = (args.clone_dir or Path(repo_name(args.git_url))).expanduser().resolve()
+    if (clone_dir / ".git").is_dir():
+        print(f"Using the existing clone {clone_dir}")
+        if args.git_update:
+            ref = args.git_ref or "HEAD"
+            if git("fetch", "--depth", "1", "origin", ref, cwd=clone_dir).returncode != 0 or \
+                    git("checkout", "--detach", "FETCH_HEAD", cwd=clone_dir).returncode != 0:
+                sys.exit(f"[error] could not update {clone_dir} to {ref}")
+    elif clone_dir.exists() and any(clone_dir.iterdir()):
+        sys.exit(f"[error] {clone_dir} exists and is not a git clone; choose another --clone-dir")
+    else:
+        print(f"Cloning {args.git_url} into {clone_dir}")
+        branch = ["--branch", args.git_ref] if args.git_ref else []
+        if git("clone", "--depth", "1", *branch, args.git_url, str(clone_dir)).returncode != 0:
+            if not args.git_ref:
+                sys.exit(f"[error] could not clone {args.git_url}")
+            # --branch takes only branches and tags: a commit needs a full clone and a checkout.
+            if clone_dir.exists() and any(clone_dir.iterdir()):
+                sys.exit(f"[error] could not clone {args.git_url}; {clone_dir} was left behind, remove it")
+            if git("clone", args.git_url, str(clone_dir)).returncode != 0 or \
+                    git("checkout", "--detach", args.git_ref, cwd=clone_dir).returncode != 0:
+                sys.exit(f"[error] could not clone {args.git_url} at {args.git_ref}")
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=clone_dir, capture_output=True, text=True).stdout.strip()
+    print(f"Dataset commit: {commit}")
+    return clone_dir / args.git_subdir if args.git_subdir else clone_dir
 
 
 def discover_systems(root: Path) -> list[str]:
@@ -276,8 +319,22 @@ def parse_args(argv=None):
         description="Generate and run DockThor TOML configurations for a qualification set.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("dataset", type=Path, help="Qualification set root (contains config/, ligand/, receptor/, ...).")
+    parser.add_argument("dataset", type=Path, nargs="?",
+                        help="Qualification set root (contains config/, ligand/, receptor/, ...). "
+                             "Omit it with --git-url.")
     parser.add_argument("--systems", nargs="+", metavar="PDB", help="Only these PDB IDs (default: all in config/).")
+
+    src = parser.add_argument_group("dataset from git")
+    src.add_argument("--git-url", metavar="URL",
+                     help="Clone the qualification set from this git repository (e.g. "
+                          "https://github.com/<org>/<repo>.git) and run the workflow on the clone.")
+    src.add_argument("--git-ref", metavar="REF", help="Branch, tag or commit to check out (default: the default branch).")
+    src.add_argument("--git-subdir", metavar="PATH",
+                     help="Set root inside the repository, if it is not the repository root.")
+    src.add_argument("--clone-dir", type=Path, metavar="DIR",
+                     help="Where to clone (default: ./<repo name>). An existing clone there is reused as is.")
+    src.add_argument("--git-update", action="store_true",
+                     help="Update an existing clone to --git-ref (or the remote default branch) before running.")
 
     gen = parser.add_argument_group("generation")
     gen.add_argument("--generate", action="store_true", help="Write the <pdb>.toml files.")
@@ -314,19 +371,30 @@ def parse_args(argv=None):
                           "<output-dir>/<pdb>/<pdb>_run.log.")
 
     args = parser.parse_args(argv)
-    if not args.generate and args.run_path is None:
+    if (args.dataset is None) == (args.git_url is None):
+        parser.error("give either the dataset directory or --git-url")
+    if args.git_url is None and (args.git_ref or args.git_subdir or args.clone_dir or args.git_update):
+        parser.error("--git-ref, --git-subdir, --clone-dir and --git-update need --git-url")
+    if not args.generate and args.run_path is None and args.git_url is None:
         parser.error("nothing to do: pass --generate and/or --run-path")
     if args.generate and args.output_dir is None:
         parser.error("--generate requires --output-dir")
-    args.dataset = args.dataset.expanduser().resolve()
+    args.parser = parser
+    return args
+
+
+def resolve_dataset(args) -> None:
+    """Set args.dataset (cloning it first with --git-url) and args.toml_dir."""
+    dataset = clone_dataset(args) if args.git_url else args.dataset
+    args.dataset = dataset.expanduser().resolve()
     args.toml_dir = args.output_toml_path.expanduser().resolve() if args.output_toml_path else args.dataset
     if not (args.dataset / "config").is_dir():
-        parser.error(f"{args.dataset} has no config/ directory")
-    return args
+        args.parser.error(f"{args.dataset} has no config/ directory")
 
 
 def main(argv=None) -> int:
     args = parse_args(argv)
+    resolve_dataset(args)
     systems = args.systems or discover_systems(args.dataset)
     errors = 0
     if args.generate:
