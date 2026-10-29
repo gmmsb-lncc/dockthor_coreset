@@ -2,6 +2,9 @@
 """
 Generate and run DockThor TOML configurations for a qualification set.
 
+Part of the DockThor coreset repository (https://github.com/gmmsb-lncc/dockthor_coreset);
+see its README.md for the full reference. Run from a clone, the dataset defaults to that clone.
+
 The qualification set directory is expected to contain:
 
     config/<pdb>.grid_center.txt   three floats (x y z)
@@ -17,9 +20,12 @@ The qualification set directory is expected to contain:
 found there, then writes a summary CSV with the execution time and the success
 rates of every executed system. Both can be given in the same call.
 `--git-url <repo>` clones the set from a git repository (GitHub or any git URL)
-and runs the same workflow on the clone.
+and runs the same workflow on the clone. `--run-dir <dir>` runs TOMLs that already
+exist (e.g. the `toml/` folder of a dataset repository) instead of generated ones.
 
-Examples:
+Examples (from the root of a dockthor_coreset clone; DOCKTHOR is the dockthor-suite checkout):
+    python3 scripts/qualification_set.py --run-dir toml -o steadystate --run-path $DOCKTHOR/build/bin/dockthor \\
+        --mpi --np 24 --dockthor-args='--ga-nrun 24 --success-rate-RMSD 3'
     python3 scripts/qualification_set.py ~/vcoreset-fix --generate -o ~/results/vcoreset
     python3 scripts/qualification_set.py ~/vcoreset-fix --run-path build/bin/dockthor --mpi --np 8
     python3 scripts/qualification_set.py ~/vcoreset-fix --generate -o out --set ga-nrun=30 \\
@@ -28,6 +34,9 @@ Examples:
         --set success-rate-RMSD=2.0 --run-path build/bin/dockthor
     python3 scripts/qualification_set.py --git-url https://github.com/<org>/<dataset>.git --generate -o steadystate \\
         --set success-rate-RMSD=2.0 --run-path build/bin/dockthor --mpi --np 2
+    python3 scripts/qualification_set.py --git-url git@github.com:<org>/<dataset>.git --run-dir toml -o steadystate \\
+        --run-path build/bin/dockthor --dockthor-args='--ga-nrun 24 --success-rate-RMSD 2.0'
+    python3 scripts/qualification_set.py --run-dir ~/dockthor_coreset/toml -o steadystate --run-path build/bin/dockthor
 """
 
 import argparse
@@ -112,6 +121,23 @@ def clone_dataset(args) -> Path:
     return clone_dir / args.git_subdir if args.git_subdir else clone_dir
 
 
+def infer_dataset(toml_dir: Path) -> Path | None:
+    """The set root of a TOML folder: the first of toml_dir and its parents where the ligand and
+    receptor of a TOML exist (their paths are relative to the set root)."""
+    for toml_path in sorted(toml_dir.glob("*.toml")):
+        try:
+            config = tomllib.loads(toml_path.read_text())
+        except (OSError, tomllib.TOMLDecodeError):
+            continue
+        if "ligand" not in config or "receptor" not in config:
+            continue
+        for root in (toml_dir, *toml_dir.parents):
+            if (root / config["ligand"]).exists() and (root / config["receptor"]).exists():
+                return root
+        return None
+    return None
+
+
 def discover_systems(root: Path) -> list[str]:
     return sorted(p.name.removesuffix(".grid_center.txt") for p in (root / "config").glob("*.grid_center.txt"))
 
@@ -168,6 +194,9 @@ def generate(args, systems: list[str]) -> int:
     print(f"Generated {written} TOML file(s) in {args.toml_dir} ({failures} error(s)).")
     return failures
 
+
+# The repository this script lives in (scripts/..): the default dataset when none is given.
+REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -235,13 +264,22 @@ def write_summary(path: Path, results: list[dict]) -> None:
             writer.writerow(row)
 
 
-def summary_path_of(args, out_dirs: list[Path]) -> Path:
+def summary_path_of(args, out_dirs: list[Path], toml_dir: Path) -> Path:
     """--summary-csv, else <common output-dir>/qualification_summary.csv, else next to the TOMLs."""
     if args.summary_csv is not None:
         return args.summary_csv.expanduser().resolve()
     parents = {d.parent for d in out_dirs}
-    base = parents.pop() if len(parents) == 1 else args.toml_dir
+    base = parents.pop() if len(parents) == 1 else toml_dir
     return base / "qualification_summary.csv"
+
+
+def run_systems(args) -> list[str]:
+    """--systems, else every <pdb>.toml of --run-dir, else every system of config/."""
+    if args.systems:
+        return args.systems
+    if args.run_toml_dir is not None:
+        return sorted(p.stem for p in args.run_toml_dir.glob("*.toml"))
+    return discover_systems(args.dataset)
 
 
 def run(args, systems: list[str]) -> int:
@@ -258,17 +296,19 @@ def run(args, systems: list[str]) -> int:
     if output_dir is not None:
         dockthor_args = ["--output-dir", str(output_dir), *dockthor_args]
 
-    tomls = [args.toml_dir / f"{pdb}.toml" for pdb in systems]
+    toml_dir = args.run_toml_dir or args.toml_dir
+    tomls = [toml_dir / f"{pdb}.toml" for pdb in systems]
     missing = [t.name for t in tomls if not t.is_file()]
     if missing:
-        print(f"[warn] {len(missing)} TOML file(s) not found in {args.toml_dir}, run --generate first: "
-              f"{' '.join(missing[:10])}")
+        print(f"[warn] {len(missing)} TOML file(s) not found in {toml_dir}: {' '.join(missing[:10])}")
+    if not systems:
+        print(f"[warn] no TOML file to run in {toml_dir}")
     tomls = [t for t in tomls if t.is_file()]
 
     failed = []
     results = []
     out_dirs = [d for t in tomls if (d := system_dir_of(t, args.dataset, output_dir)) is not None]
-    summary_path = summary_path_of(args, out_dirs)
+    summary_path = summary_path_of(args, out_dirs, toml_dir)
     total_start = time.monotonic()
     for index, toml_path in enumerate(tomls, start=1):
         pdb = toml_path.stem
@@ -320,8 +360,9 @@ def parse_args(argv=None):
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("dataset", type=Path, nargs="?",
-                        help="Qualification set root (contains config/, ligand/, receptor/, ...). "
-                             "Omit it with --git-url.")
+                        help="Qualification set root (contains config/, ligand/, receptor/, ...). Omit it with "
+                             "--git-url, or with --run-dir to infer it from the TOMLs; with none of them, the "
+                             "repository holding this script is used.")
     parser.add_argument("--systems", nargs="+", metavar="PDB", help="Only these PDB IDs (default: all in config/).")
 
     src = parser.add_argument_group("dataset from git")
@@ -354,6 +395,12 @@ def parse_args(argv=None):
 
     exe = parser.add_argument_group("execution")
     exe.add_argument("--run-path", type=Path, metavar="DOCKTHOR", help="Path to the dockthor binary; runs every TOML.")
+    exe.add_argument("--run-dir", type=Path, metavar="DIR",
+                     help="Run the TOMLs that already exist in DIR (every <pdb>.toml, or --systems) instead of "
+                          "the generated ones. Their input paths must be relative to the dataset root. With a "
+                          "dataset or --git-url, a relative DIR is relative to the dataset root (e.g. 'toml'); "
+                          "alone, DIR is relative to the current directory and the dataset root is inferred "
+                          "from the TOMLs (DIR or the first parent holding their ligand and receptor).")
     exe.add_argument("--mpi", action="store_true", default=False, help="Run DockThor with MPI.")
     exe.add_argument("--np", type=int, default=4, help="Number of MPI processes (with --mpi).")
     exe.add_argument("--mpirun", default="mpirun", help="MPI launcher command.")
@@ -371,36 +418,60 @@ def parse_args(argv=None):
                           "<output-dir>/<pdb>/<pdb>_run.log.")
 
     args = parser.parse_args(argv)
-    if (args.dataset is None) == (args.git_url is None):
-        parser.error("give either the dataset directory or --git-url")
+    if args.dataset is not None and args.git_url is not None:
+        parser.error("give either the dataset directory or --git-url, not both")
+    if args.dataset is None and args.git_url is None and args.run_dir is None:
+        if not (REPOSITORY_ROOT / "config").is_dir():
+            parser.error("give the dataset directory, --git-url, or --run-dir with the TOMLs")
+        args.dataset = REPOSITORY_ROOT  # the script runs from a dataset repository: use it
+    if args.dataset is None and args.git_url is None and args.generate and args.run_dir is not None:
+        parser.error("--generate needs the dataset directory or --git-url")
     if args.git_url is None and (args.git_ref or args.git_subdir or args.clone_dir or args.git_update):
         parser.error("--git-ref, --git-subdir, --clone-dir and --git-update need --git-url")
     if not args.generate and args.run_path is None and args.git_url is None:
         parser.error("nothing to do: pass --generate and/or --run-path")
     if args.generate and args.output_dir is None:
         parser.error("--generate requires --output-dir")
+    if args.run_dir is not None and args.run_path is None:
+        parser.error("--run-dir requires --run-path")
     args.parser = parser
     return args
 
 
 def resolve_dataset(args) -> None:
-    """Set args.dataset (cloning it first with --git-url) and args.toml_dir."""
-    dataset = clone_dataset(args) if args.git_url else args.dataset
+    """Set args.dataset (cloning it first with --git-url, or inferring it from --run-dir) and args.toml_dir."""
+    if args.dataset is None and args.git_url is None:
+        toml_dir = args.run_dir.expanduser().resolve()
+        if not toml_dir.is_dir():
+            args.parser.error(f"--run-dir {toml_dir} is not a directory")
+        dataset = infer_dataset(toml_dir)
+        if dataset is None:
+            args.parser.error(f"cannot find the dataset root of the TOMLs in {toml_dir}: no folder from there up "
+                              "holds their ligand and receptor; pass the dataset directory")
+        print(f"Dataset root (from the TOMLs): {dataset}")
+        args.run_dir = toml_dir  # absolute, so it does not depend on the dataset root below
+    else:
+        dataset = clone_dataset(args) if args.git_url else args.dataset
     args.dataset = dataset.expanduser().resolve()
     args.toml_dir = args.output_toml_path.expanduser().resolve() if args.output_toml_path else args.dataset
-    if not (args.dataset / "config").is_dir():
+    args.run_toml_dir = None
+    if args.run_dir is not None:
+        args.run_toml_dir = (args.dataset / args.run_dir.expanduser()).resolve()  # an absolute DIR stays as is
+        if not args.run_toml_dir.is_dir():
+            args.parser.error(f"--run-dir {args.run_toml_dir} is not a directory")
+    needs_config = args.generate or (args.run_path is not None and args.run_dir is None and not args.systems)
+    if needs_config and not (args.dataset / "config").is_dir():
         args.parser.error(f"{args.dataset} has no config/ directory")
 
 
 def main(argv=None) -> int:
     args = parse_args(argv)
     resolve_dataset(args)
-    systems = args.systems or discover_systems(args.dataset)
     errors = 0
     if args.generate:
-        errors += generate(args, systems)
+        errors += generate(args, args.systems or discover_systems(args.dataset))
     if args.run_path is not None:
-        errors += run(args, systems)
+        errors += run(args, run_systems(args))
     return 1 if errors else 0
 
 
