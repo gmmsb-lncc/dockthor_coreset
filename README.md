@@ -108,34 +108,35 @@ cd dockthor_coreset
 set DOCKTHOR ~/dockthor-suite        # your dockthor-suite checkout (bash: DOCKTHOR=~/dockthor-suite)
 ```
 
-**SteadyState on the CPU, MPI.** 24 GA runs per complex over 24 MPI processes (one run each), success rate up to 3 Å:
+**SteadyState on the CPU, MPI.** 24 GA runs per complex over 24 MPI processes (one run each), top-10 report and per-run success rates up to 3 Å:
 
 ```fish
-python3 scripts/qualification_set.py --run-dir toml -o steadystate \
-    --run-path $DOCKTHOR/build/bin/dockthor --mpi --np 24 --skip-done \
-    --dockthor-args='--ga-evolution-type STEADYSTATE --ga-nrun 24 --success-rate-RMSD 3'
+python3 scripts/qualification_set.py --config-dir toml -o steadystate \
+    --dockthor-path $DOCKTHOR/build/bin/dockthor --mpi --np 24 --skip-done \
+    --dockthor-args='--ga-evolution-type STEADYSTATE --ga-nrun 24 --success-rate --success-rate-by-run 3'
 ```
 
 **GENERATIONAL_OCL on the GPU.** OpenCL build, one process (the GPU packs the 24 runs, so no `--mpi`):
 
 ```fish
-python3 scripts/qualification_set.py --run-dir toml -o generational_ocl \
-    --run-path $DOCKTHOR/build_ocl/bin/dockthor --skip-done \
-    --dockthor-args='--ga-evolution-type GENERATIONAL_OCL --ga-nrun 24 --success-rate-RMSD 3'
+python3 scripts/qualification_set.py --config-dir toml -o generational_ocl \
+    --dockthor-path $DOCKTHOR/build_ocl/bin/dockthor --skip-done \
+    --dockthor-args='--ga-evolution-type GENERATIONAL_OCL --ga-nrun 24 --success-rate --success-rate-by-run 3'
 ```
 
-Each prints one line per complex and ends with the summary path:
+Each prints one line per complex and ends with the paths of the summary and the success rates:
 
 ```
 Dataset root (from the TOMLs): /home/user/dockthor_coreset
-[1/195] 10gs: mpirun -n 24 .../dockthor --config .../toml/10gs.toml --output-dir steadystate --ga-evolution-type STEADYSTATE --ga-nrun 24 --success-rate-RMSD 3
+[1/195] 10gs: mpirun -n 24 .../dockthor --config .../toml/10gs.toml --output-dir steadystate --ga-evolution-type STEADYSTATE --ga-nrun 24 --success-rate --success-rate-by-run 3
     ok in <t>s, log: .../steadystate/10gs/10gs_run.log
 ...
 Ran 195 system(s) in <t>s, 0 failed.
-Summary: /home/user/dockthor_coreset/steadystate/qualification_summary.csv
+Summary: /home/user/dockthor_coreset/steadystate/qualification_summary.csv (195 complex(es) with a _success_rate.csv)
+Success rates: /home/user/dockthor_coreset/steadystate/success_rate.txt
 ```
 
-`steadystate/qualification_summary.csv` then holds the execution time and both success rates of every complex (§5.3). If the run stops, the same command resumes it: `--skip-done` skips the finished complexes.
+`steadystate/qualification_summary.csv` then holds the top-N report of every complex (§5.3), and `steadystate/success_rate.txt` the success rate of the whole set for every topK and RMSD cutoff (§5.4). If the run stops, the same command resumes it: `--skip-done` skips the finished complexes.
 
 ---
 
@@ -144,33 +145,33 @@ Summary: /home/user/dockthor_coreset/steadystate/qualification_summary.csv
 `scripts/qualification_set.py` does three things, in any combination:
 
 1. **Generate** a TOML per complex from `config/`, `ligand/`, `receptor/` and `cofactor/` (`--generate`).
-2. **Run** DockThor on a folder of TOMLs, saving each complex's console output (`--run-path`).
+2. **Run** DockThor on a folder of TOMLs, saving each complex's console output (`--dockthor-path`).
 3. **Summarize** the execution time and success rates of every complex run (automatic after 2).
 
 The dataset can be this repository, any directory with the same layout, or a git repository the script clones (`--git-url`).
 
 ### 4.1 Workflows
 
-**A. Run the committed TOMLs** (the usual case, §3). `--run-dir toml` takes every `toml/<pdb>.toml`:
+**A. Run the committed TOMLs** (the usual case, §3). `--config-dir toml` takes every `toml/<pdb>.toml`:
 
 ```fish
-python3 scripts/qualification_set.py --run-dir toml -o steadystate --run-path $DOCKTHOR/build/bin/dockthor \
-    --mpi --np 24 --dockthor-args='--ga-nrun 24 --success-rate-RMSD 3'
+python3 scripts/qualification_set.py --config-dir toml -o steadystate --dockthor-path $DOCKTHOR/build/bin/dockthor \
+    --mpi --np 24 --dockthor-args='--ga-nrun 24 --success-rate --success-rate-by-run 3'
 ```
 
 **B. A subset.** `--systems` restricts any workflow to some complexes, for a quick check of a build:
 
 ```fish
-python3 scripts/qualification_set.py --run-dir toml --systems 1bcu 10gs 1f8b -o check \
-    --run-path $DOCKTHOR/build/bin/dockthor --mpi --np 4 --dockthor-args='--ga-nrun 4 --success-rate-RMSD 2'
+python3 scripts/qualification_set.py --config-dir toml --systems 1bcu 10gs 1f8b -o check \
+    --dockthor-path $DOCKTHOR/build/bin/dockthor --mpi --np 4 --dockthor-args='--ga-nrun 4 --success-rate --success-rate-by-run 2'
 ```
 
 **C. Generate TOMLs with the setup inside them.** `--generate` writes new TOMLs, `--set` adds options to all of them, and `--output-toml-path` keeps them apart from `toml/`. The setup is then recorded with the TOMLs, and `--dockthor-args` is not needed:
 
 ```fish
 python3 scripts/qualification_set.py --generate -o generational_ocl --output-toml-path toml_generational_ocl \
-    --set 'ga-evolution-type="GENERATIONAL_OCL"' --set ga-nrun=24 --set success-rate-RMSD=3.0 \
-    --run-path $DOCKTHOR/build_ocl/bin/dockthor --skip-done
+    --set 'ga-evolution-type="GENERATIONAL_OCL"' --set ga-nrun=24 --set success-rate=true --set success-rate-by-run=3.0 \
+    --dockthor-path $DOCKTHOR/build_ocl/bin/dockthor --skip-done
 ```
 
 Without `--output-toml-path` the TOMLs are written to the dataset root; existing ones are kept unless `--overwrite` is given.
@@ -179,8 +180,8 @@ Without `--output-toml-path` the TOMLs are written to the dataset root; existing
 
 ```fish
 python3 dockthor_coreset/scripts/qualification_set.py --git-url git@github.com:gmmsb-lncc/dockthor_coreset.git \
-    --git-ref main --run-dir toml -o steadystate --run-path $DOCKTHOR/build/bin/dockthor --mpi --np 24 \
-    --dockthor-args='--ga-nrun 24 --success-rate-RMSD 3'
+    --git-ref main --config-dir toml -o steadystate --dockthor-path $DOCKTHOR/build/bin/dockthor --mpi --np 24 \
+    --dockthor-args='--ga-nrun 24 --success-rate --success-rate-by-run 3'
 ```
 
 The script prints the checked-out commit (`Dataset commit: <sha>`), which ties the results to an exact version of the set.
@@ -189,7 +190,7 @@ The script prints the checked-out commit (`Dataset commit: <sha>`), which ties t
 
 ```fish
 python3 scripts/qualification_set.py ~/my_set --generate -o results --set ga-nrun=10 \
-    --run-path $DOCKTHOR/build/bin/dockthor
+    --dockthor-path $DOCKTHOR/build/bin/dockthor
 ```
 
 ### 4.2 Options
@@ -200,8 +201,8 @@ Values that start with `-` must use the `=` form: `--dockthor-args='--seed 7'` w
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `dataset` (positional) | this repository | Root of the set. Omit it to use the repository holding the script, with `--git-url`, or with `--run-dir` (the root is then inferred from the TOMLs, §4.3) |
-| `--systems PDB ...` | all | Only these complexes. Without it: every TOML of `--run-dir`, or every complex of `config/` |
+| `dataset` (positional) | this repository | Root of the set. Omit it to use the repository holding the script, with `--git-url`, or with `--config-dir` (the root is then inferred from the TOMLs, §4.3) |
+| `--systems PDB ...` | all | Only these complexes. Without it: every TOML of `--config-dir`, or every complex of `config/` |
 | `--git-url URL` | — | Clone the set from a git repository (HTTPS, SSH or a local path) instead of giving `dataset` |
 | `--git-ref REF` | default branch | Branch, tag or commit to check out. Branches and tags are cloned shallow (`--depth 1`); a commit needs a full clone, done automatically |
 | `--git-subdir PATH` | repository root | Set root inside the cloned repository, when the set is in a subfolder |
@@ -213,8 +214,8 @@ Values that start with `-` must use the `=` form: `--dockthor-args='--seed 7'` w
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--generate` | off | Write `<pdb>.toml` for every selected complex. Requires `-o` and a dataset with `config/` |
-| `-o, --output-dir DIR` | TOML's `output-dir` | With `--generate`, the `output-dir` written into the TOMLs. With `--run-path`, also passed to DockThor as `--output-dir`, overriding the TOMLs, so the same TOMLs can be run into one directory per setup. A relative path is relative to the dataset root |
-| `--output-toml-path DIR` | dataset root | Where `--generate` writes the TOMLs and where `--run-path` reads them (when `--run-dir` is not given). Relative to the current directory. Input paths inside the TOMLs stay relative to the dataset root |
+| `-o, --output-dir DIR` | TOML's `output-dir` | With `--generate`, the `output-dir` written into the TOMLs. With `--dockthor-path`, also passed to DockThor as `--output-dir`, overriding the TOMLs, so the same TOMLs can be run into one directory per setup. A relative path is relative to the dataset root |
+| `--output-toml-path DIR` | dataset root | Where `--generate` writes the TOMLs and where `--dockthor-path` reads them (when `--config-dir` is not given). Relative to the current directory. Input paths inside the TOMLs stay relative to the dataset root |
 | `--set KEY=VALUE` | — | Any DockThor option, written into every generated TOML. `VALUE` is a TOML literal: numbers and booleans as is (`--set ga-nrun=24`, `--set symmetric-RMSD=true`), strings quoted (`--set 'ga-evolution-type="STEADYSTATE"'`). Repeatable |
 | `--no-cofactors` | off | Leave `cofactors-path` out of the generated TOMLs, to dock without cofactors |
 | `--overwrite` | off | Replace existing TOMLs (otherwise they are kept and reported as skipped) |
@@ -223,14 +224,16 @@ Values that start with `-` must use the `=` form: `--dockthor-args='--seed 7'` w
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--run-path DOCKTHOR` | — | The `dockthor` binary. Runs every selected TOML, one complex after the other |
-| `--run-dir DIR` | — | Run the TOMLs already in `DIR` instead of generated ones. Alone, `DIR` is relative to the current directory; with `dataset` or `--git-url`, relative to the dataset root |
+| `--dockthor-path DOCKTHOR` | — | The `dockthor` binary. Runs every selected TOML, one complex after the other |
+| `--config-dir DIR` | — | Run the TOMLs already in `DIR` instead of generated ones. Alone, `DIR` is relative to the current directory; with `dataset` or `--git-url`, relative to the dataset root |
 | `--mpi` | off | Launch DockThor with `mpirun` |
 | `--np N` | 4 | MPI processes per complex. DockThor spreads the `ga-nrun` runs over them, so `--np` equal to `ga-nrun` runs them all at once |
 | `--mpirun CMD` | `mpirun` | MPI launcher, e.g. `srun` on a SLURM cluster |
 | `--mpi-args=ARGS` | — | Extra launcher arguments, e.g. `--mpi-args='--oversubscribe --bind-to none'` |
 | `--dockthor-args=ARGS` | — | Extra DockThor command-line options for every complex; they take precedence over the TOMLs |
-| `--summary-csv FILE` | §5.3 | Path of the summary CSV |
+| `--summary-csv FILE` | §5.3 | Path of the summary CSV; `success_rate.txt` goes next to it |
+| `--rmsd-cutoff RMSD` | §5.4 | Largest cutoff of `success_rate.txt`: 0.5, 1.0, ... up to `RMSD` (rounded up to 0.5); default 2.0 |
+| `--generate-summary CSV` | — | Only write `success_rate.txt`, in the current directory, from an existing `qualification_summary.csv` (§5.4); runs alone, nothing is generated or docked |
 | `--skip-done` | off | Skip complexes that already have a `*_docked.csv` in `<output-dir>/<pdb>/`: rerun the same command to resume |
 | `--stop-on-error` | off | Stop at the first complex whose DockThor call fails (default: report it and go on) |
 | `--dry-run` | off | Print the DockThor commands without running them |
@@ -244,7 +247,10 @@ The exit status is non-zero when any complex fails or a TOML cannot be generated
 |--------|---------|
 | `--ga-evolution-type` | `STEADYSTATE` (CPU, default) or `GENERATIONAL_OCL` (GPU, OpenCL build) |
 | `--ga-nrun N` | Independent GA runs per complex: the denominator of the success rate. 24 runs give 4.2% steps |
-| `--success-rate-RMSD c` | Turn the success rate on and report it at 0, 0.5, ... up to `c` Å. **Needed for the summary rates** |
+| `--success-rate` | Top-N report: energy and RMSD of the lowest-RMSD pose among the top 1..N leaders of all runs. **Always added by the script**, since the summary and `success_rate.txt` are built from it |
+| `--success-rate-top N` | N of the top-N report (default 10); requires `--success-rate` |
+| `--success-rate-by-run R` | Per-run success rates at 0.5, 1.0, ... up to `R` Å (rounded up to 0.5); also writes every run's leaders (`--log-every-run`). Kept in each complex's directory, not in the summary |
+| `--success-rate-RMSD` | Deprecated: DockThor stops with an error |
 | `--symmetric-RMSD` | Symmetry-aware RMSD for clustering and the success rate. More accurate for symmetric ligands, much slower (§6) |
 | `--seed N` | RNG seed, for repeating a qualification exactly |
 | `--ga-evaluations N`, `--ga-init-evaluations N` | Length of the evolution (lower for quick checks) |
@@ -254,14 +260,14 @@ The exit status is non-zero when any complex fails or a TOML cannot be generated
 
 The input paths in the TOMLs (`ligand/...`, `receptor/...`, `cofactor/...`) are relative to the **dataset root**, and the script always runs DockThor with the dataset root as working directory, passing each TOML by its absolute path. The dataset root is:
 
-| Given | Dataset root | `--run-dir DIR` relative to |
+| Given | Dataset root | `--config-dir DIR` relative to |
 |-------|--------------|-----------------------------|
-| nothing (only `--run-path`, `--generate`, ...) | the repository holding the script | the dataset root |
+| nothing (only `--dockthor-path`, `--generate`, ...) | the repository holding the script | the dataset root |
 | `dataset` | `dataset` | the dataset root |
 | `--git-url` | the clone (or `--git-subdir` in it) | the dataset root |
-| `--run-dir DIR` only | inferred: `DIR` or the first parent of it where the `ligand` and `receptor` of a TOML exist | the current directory |
+| `--config-dir DIR` only | inferred: `DIR` or the first parent of it where the `ligand` and `receptor` of a TOML exist | the current directory |
 
-With `--run-dir` alone the script prints the root it inferred (`Dataset root (from the TOMLs): ...`) and stops if no such folder exists. Run the examples of this README from the repository root, or give `--run-dir` as an absolute path.
+With `--config-dir` alone the script prints the root it inferred (`Dataset root (from the TOMLs): ...`) and stops if no such folder exists. Run the examples of this README from the repository root, or give `--config-dir` as an absolute path.
 
 The output directory (`-o` or the TOML's `output-dir`) is relative to the dataset root too: `-o steadystate` writes to `dockthor_coreset/steadystate/`.
 
@@ -273,13 +279,14 @@ The output directory (`-o` or the TOML's `output-dir`) is relative to the datase
 
 ```
 <output-dir>/
-├── qualification_summary.csv                    all complexes run (§5.3)
+├── qualification_summary.csv                    top-N report of every complex (§5.3)
+├── success_rate.txt                             success rate of the set per topK and cutoff (§5.4)
 ├── 10gs/
 │   ├── 10gs_run.log                             console output of the DockThor call
 │   ├── 10gs_ligand_docked.csv / .mol2           cluster leaders of all runs, best energy first
-│   ├── 10gs_ligand_docked_success_rate.csv      success rate per cutoff (with --success-rate-RMSD)
-│   ├── 10gs_ligand_docked_success_t_energy.csv / .mol2   best-energy pose of every run
-│   └── 10gs_ligand_docked_success_RMSD.csv / .mol2       pose closest to the crystal of every run
+│   ├── 10gs_ligand_docked_success_rate.csv      top-N report, one row (--success-rate, always added by the script)
+│   ├── 10gs_ligand_docked_success_rate_by_run.csv   per-run rates, one line per criterion and cutoff (with --success-rate-by-run)
+│   └── 10gs_ligand_docked_run_<N>.csv / .mol2   leaders of run N (with --success-rate-by-run or --log-every-run)
 ├── 1a30/
 ...
 ```
@@ -288,50 +295,72 @@ Each complex directory is named after its receptor file (the PDB ID). The DockTh
 
 ### 5.2 Run log
 
-`<output-dir>/<pdb>/<pdb>_run.log` is the console output of the DockThor call: the command line, then stdout and stderr, without the terminal colors. It holds the grid, the evolution progress and the success-rate table:
+`<output-dir>/<pdb>/<pdb>_run.log` is the console output of the DockThor call: the command line, then stdout and stderr, without the terminal colors. It holds the grid, the evolution progress, the top-N summary and the per-run success-rate table:
 
 ```
 [DOCKTHOR] Success rate (%) over 24 runs, RMSD <= cutoff.
-           |------->     RMSD     energy       RMSD
-           |------->     0.00       0.00       0.00
-           |------->     0.50      25.00      25.00
-           |------->     1.00      33.33      41.67
+           |------->   <=RMSD  % by energy    % by RMSD
+           |------->     0.50        25.00        25.00
+           |------->     1.00        33.33        41.67
            ...
 ```
 
 ### 5.3 Summary CSV
 
-After every complex the script rewrites `qualification_summary.csv`, so an interrupted set keeps the rows already done. It goes to the common output directory (`<output-dir>/qualification_summary.csv`), or next to the TOMLs when the complexes write to different directories; `--summary-csv FILE` sets it explicitly.
+`qualification_summary.csv` is the consolidation of every `<pdb>/<ligand>_docked_success_rate.csv`, the one-row top-N report DockThor writes with `--success-rate`: one row per complex, with DockThor's own columns.
 
 ```
-complex,execution_time,RMSD_0,RMSD_0.5,RMSD_1,RMSD_1.5,RMSD_2,RMSD_2.5,RMSD_3,Energy_0,Energy_0.5,Energy_1,Energy_1.5,Energy_2,Energy_2.5,Energy_3
-10gs,248.70,0.00,12.50,37.50,41.67,41.67,41.67,41.67,0.00,8.33,25.00,33.33,33.33,37.50,41.67
-1a30,...
+complex,execution_time(s),num_top,top1_E,top1_RMSD,top2_E,top2_RMSD,...,top10_E,top10_RMSD
+1bcu,2.61,100,-4.974,1.519,-4.174,0.467,...,-4.174,0.467
+1a30,3.70,100,48.371,3.471,55.014,2.435,...,65.495,1.880
 ```
 
 | Column | Unit | Description |
 |--------|------|-------------|
-| `complex` | — | PDB ID |
-| `execution_time` | s | Wall time of the DockThor call (with `mpirun`), measured by the script |
-| `RMSD_<c>` | % | Success rate **by RMSD** at cutoff `c` Å |
-| `Energy_<c>` | % | Success rate **by energy** at cutoff `c` Å |
+| `complex` | — | PDB ID (DockThor's receptor name) |
+| `execution_time(s)` | s | DockThor's wall time up to the report (grids, docking, clustering) |
+| `num_top` | — | Number of leaders of the all-runs clustering |
+| `topK_E`, `topK_RMSD` | kcal/mol, Å | Energy and RMSD of the lowest-RMSD pose among the K best-ranked leaders, K = 1 ... N (`--success-rate-top`, 10 by default) |
 
-The rates are filled only when DockThor runs with `--success-rate-RMSD`; otherwise the script warns and the CSV has the times only. A failed complex keeps its row with empty rates; complexes skipped by `--skip-done` are not listed (they were not run in that call). When complexes use different cutoffs, the columns are the union and missing rates are empty.
+The script rewrites it, and `success_rate.txt`, after every complex, so an interrupted set keeps what is done. Complexes skipped by `--skip-done` are included from their existing files, so a resumed set still gets the whole consolidation. The script always passes `--success-rate` to DockThor (it is added when `--dockthor-args` lacks it), so every docking that succeeds has its row; a complex that failed has none. When complexes use different N, the columns are the union and missing values are empty. The file goes to the common output directory (`<output-dir>/qualification_summary.csv`), or next to the TOMLs when the complexes write to different directories; `--summary-csv FILE` sets it explicitly.
 
 ### 5.4 What the success rates mean
 
-DockThor computes the rates at the end of each docking; the full definition is in the DockThor manual, `doc/MANUAL_dmrts.md` §10.5. In short, with *N* = `ga-nrun` runs:
+DockThor computes the reports at the end of each docking; the full definition is in the DockThor manual, `doc/MANUAL_dmrts.md` §10.5.
+
+**Top-N (`topK_*`).** The leaders of the clustering of all runs (the poses of `_docked.csv`) are sorted by energy; `topK` is the pose with the lowest RMSD to the crystal ligand among the first K. `top1` is DockThor's answer, and the RMSD can only drop as K grows: the K where it first falls below 2 Å is the rank at which the native pose shows up. When there are fewer than N leaders (`num_top` < N), the last `topK` repeat the best of them all.
+
+**Success rate of the set (`success_rate.txt`).** For every cutoff *c* = 0.5, 1.0, ... up to `--rmsd-cutoff` (rounded up to 0.5) and every `topK`, the share of complexes whose `topK_RMSD <= c`, over the complexes with a `_success_rate.csv`. `top1` at 2 Å is the classic redocking success rate; `top10` at 2 Å, how often the native pose is among the 10 best-ranked poses. With the 3 complexes above (short runs, `--rmsd-cutoff 2.2`):
+
+```
+Success rate (%) of the top-N report (DockThor --success-rate), topK_RMSD <= cutoff
+Complexes with results: 3 of 3
+
+RMSD_cutoff     top1     top2     top3     top4     top5     top6     top7     top8     top9    top10
+        0.5     0.00    33.33    33.33    33.33    33.33    33.33    33.33    33.33    33.33    33.33
+          1     0.00    33.33    33.33    33.33    33.33    33.33    33.33    33.33    33.33    33.33
+        1.5     0.00    33.33    33.33    33.33    33.33    33.33    33.33    33.33    33.33    33.33
+          2    33.33    33.33    33.33    66.67    66.67    66.67    66.67    66.67    66.67    66.67
+        2.5    33.33    66.67    66.67    66.67    66.67    66.67    66.67    66.67    66.67    66.67
+```
+
+`Complexes with results` is the denominator; a failed complex is left out of it, so compare it with the number of complexes run.
+
+**From an existing summary (`--generate-summary`).** When a set was run in pieces (an interrupted run finished by hand, or complexes run on different machines) and the `qualification_summary.csv` files were joined into one, rebuild the success rates from it. `success_rate.txt` is written to the current directory, with the cutoffs of `--rmsd-cutoff`; the denominator is the number of complexes in the CSV:
+
+```fish
+cd ~/results/steadystate
+python3 ~/dockthor_coreset/scripts/qualification_set.py --generate-summary qualification_summary.csv --rmsd-cutoff 2
+```
+
+**Per run (`--success-rate-by-run`).** In short, with *N* = `ga-nrun` runs:
 
 1. Each run is clustered on its own, and its leaders are sorted by energy.
 2. **By energy:** each run contributes its lowest-energy leader, the pose DockThor would answer with.
 3. **By RMSD:** each run contributes its leader closest to the crystal pose, which shows whether the run found the native pose at all.
 4. A run succeeds at cutoff `c` when that pose's heavy-atom RMSD to the crystal ligand is `<= c` Å; the rate is `successful runs / N × 100`.
 
-The rate by RMSD is never below the rate by energy; the gap is the share of runs that found the native pose but scored another one better. The usual redocking criterion is **2.0 Å**. To pool the set, average a column over the complexes (each complex weighs the same), for example:
-
-```fish
-python3 -c "import csv,sys; r=list(csv.DictReader(open(sys.argv[1]))); c=sys.argv[2]; v=[float(x[c]) for x in r if x[c]]; print(f'{c}: {sum(v)/len(v):.2f}% over {len(v)} complexes')" steadystate/qualification_summary.csv Energy_2
-```
+The rate by RMSD is never below the rate by energy; the gap is the share of runs that found the native pose but scored another one better. The usual redocking criterion is **2.0 Å**. The per-run rates stay in each complex's `<ligand>_docked_success_rate_by_run.csv` (`complex,runs,sorting_by,min_Energy,min_RMSD,RMSD_cutoff,%_success`); they are not part of the summary.
 
 ---
 

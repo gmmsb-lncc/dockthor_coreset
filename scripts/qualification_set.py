@@ -2,9 +2,6 @@
 """
 Generate and run DockThor TOML configurations for a qualification set.
 
-Part of the DockThor coreset repository (https://github.com/gmmsb-lncc/dockthor_coreset);
-see its README.md for the full reference. Run from a clone, the dataset defaults to that clone.
-
 The qualification set directory is expected to contain:
 
     config/<pdb>.grid_center.txt   three floats (x y z)
@@ -16,27 +13,31 @@ The qualification set directory is expected to contain:
 
 `--generate` writes one `<pdb>.toml` per system, in the root of the set or in
 `--output-toml-path`. Input paths inside the TOMLs are relative to the set root.
-`--run-path <dockthor>` runs DockThor, from the set root, on every `<pdb>.toml`
-found there, then writes a summary CSV with the execution time and the success
-rates of every executed system. Both can be given in the same call.
+`--dockthor-path <dockthor>` runs DockThor, from the set root, on every `<pdb>.toml`
+found there, always with DockThor's `--success-rate` (added when `--dockthor-args` lacks it), then writes
+qualification_summary.csv, the consolidation of every <ligand>_docked_success_rate.csv,
+and success_rate.txt, the % of complexes whose topK_RMSD <= cutoff for every topK
+and every cutoff 0.5, 1.0, ... up to `--rmsd-cutoff`. Both can be given in the same call.
+`--generate-summary <qualification_summary.csv>` only writes success_rate.txt, in the current directory,
+from an existing summary (e.g. one joined by hand from interrupted runs); it docks nothing.
 `--git-url <repo>` clones the set from a git repository (GitHub or any git URL)
-and runs the same workflow on the clone. `--run-dir <dir>` runs TOMLs that already
+and runs the same workflow on the clone. `--config-dir <dir>` runs TOMLs that already
 exist (e.g. the `toml/` folder of a dataset repository) instead of generated ones.
 
-Examples (from the root of a dockthor_coreset clone; DOCKTHOR is the dockthor-suite checkout):
-    python3 scripts/qualification_set.py --run-dir toml -o steadystate --run-path $DOCKTHOR/build/bin/dockthor \\
-        --mpi --np 24 --dockthor-args='--ga-nrun 24 --success-rate-RMSD 3'
+Examples:
     python3 scripts/qualification_set.py ~/vcoreset-fix --generate -o ~/results/vcoreset
-    python3 scripts/qualification_set.py ~/vcoreset-fix --run-path build/bin/dockthor --mpi --np 8
+    python3 scripts/qualification_set.py ~/vcoreset-fix --dockthor-path build/bin/dockthor --mpi --np 8
     python3 scripts/qualification_set.py ~/vcoreset-fix --generate -o out --set ga-nrun=30 \\
-        --run-path build/bin/dockthor --systems 1bcu 10gs
+        --dockthor-path build/bin/dockthor --systems 1bcu 10gs
     python3 scripts/qualification_set.py ~/vcoreset-fix --generate -o steadystate --output-toml-path tomls/ss \\
-        --set success-rate-RMSD=2.0 --run-path build/bin/dockthor
+        --set success-rate=true --dockthor-path build/bin/dockthor
     python3 scripts/qualification_set.py --git-url https://github.com/<org>/<dataset>.git --generate -o steadystate \\
-        --set success-rate-RMSD=2.0 --run-path build/bin/dockthor --mpi --np 2
-    python3 scripts/qualification_set.py --git-url git@github.com:<org>/<dataset>.git --run-dir toml -o steadystate \\
-        --run-path build/bin/dockthor --dockthor-args='--ga-nrun 24 --success-rate-RMSD 2.0'
-    python3 scripts/qualification_set.py --run-dir ~/dockthor_coreset/toml -o steadystate --run-path build/bin/dockthor
+        --set success-rate=true --dockthor-path build/bin/dockthor --mpi --np 2
+    python3 scripts/qualification_set.py --git-url git@github.com:<org>/<dataset>.git --config-dir toml -o steadystate \\
+        --dockthor-path build/bin/dockthor --dockthor-args='--ga-nrun 24 --success-rate --success-rate-by-run 2.0'
+    python3 scripts/qualification_set.py --config-dir ~/dockthor_coreset/toml -o steadystate --dockthor-path build/bin/dockthor \\
+        --rmsd-cutoff 3
+    python3 scripts/qualification_set.py --generate-summary steadystate/qualification_summary.csv --rmsd-cutoff 3
 """
 
 import argparse
@@ -195,9 +196,6 @@ def generate(args, systems: list[str]) -> int:
     return failures
 
 
-# The repository this script lives in (scripts/..): the default dataset when none is given.
-REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
-
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
 
@@ -228,40 +226,107 @@ def run_logged(command: list[str], cwd: Path, log_path: Path, echo: bool) -> int
     return process.returncode
 
 
-def read_success_rate(out_dir: Path) -> dict[float, tuple[float, float]]:
-    """{cutoff: (SR_energy, SR_RMSD)} from DockThor's <ligand>_docked_success_rate.csv; empty if absent."""
-    table = {}
-    for path in out_dir.glob("*_docked_success_rate.csv"):
+def read_success_rate(out_dir: Path) -> dict[str, str]:
+    """{column: value} of DockThor's one-row <ligand>_docked_success_rate.csv (--success-rate):
+    complex, execution_time(s), num_top, top1_E, top1_RMSD, ..., topN_E, topN_RMSD. Any N is accepted;
+    empty if absent or malformed."""
+    for path in sorted(out_dir.glob("*_docked_success_rate.csv")):
         with open(path, newline="") as stream:
-            for row in csv.reader(stream):
-                if not row or row[0].startswith("#"):
-                    continue
-                table[float(row[0])] = (float(row[1]), float(row[2]))
-    return table
+            rows = [row for row in csv.reader(stream) if row]
+        if len(rows) >= 2:
+            return dict(zip(rows[0], rows[1]))
+    return {}
 
 
-def cutoff_label(cutoff: float) -> str:
-    return f"{cutoff:g}"  # 0, 0.5, 1, 1.5, ...
+def column_key(column: str) -> tuple:
+    """Summary column order: complex, execution_time(s), num_top, top1_E, top1_RMSD, top2_E, ...
+    Unknown columns go last, by name."""
+    fixed = ["complex", "execution_time(s)", "num_top"]
+    if column in fixed:
+        return (0, fixed.index(column))
+    if match := re.fullmatch(r"top(\d+)_(E|RMSD)", column):
+        return (1, int(match[1]), match[2] != "E")
+    return (2, column)
 
 
-def write_summary(path: Path, results: list[dict]) -> None:
-    """One row per executed system: complex, execution_time, RMSD_<c>..., Energy_<c>...
+def top_ks(reports: list[dict]) -> list[int]:
+    """The K of every topK_RMSD column in the reports, ascending."""
+    return sorted({int(m[1]) for report in reports for c in report if (m := re.fullmatch(r"top(\d+)_RMSD", c))})
 
-    Cutoffs are the union over all systems; a rate missing for a system is left empty."""
-    cutoffs = sorted({c for result in results for c in result["success"]})
-    header = ["complex", "execution_time"]
-    header += [f"RMSD_{cutoff_label(c)}" for c in cutoffs]
-    header += [f"Energy_{cutoff_label(c)}" for c in cutoffs]
+
+def write_summary(path: Path, reports: list[dict]) -> None:
+    """qualification_summary.csv: the rows of every <ligand>_docked_success_rate.csv, one per complex.
+
+    Columns are the union over all complexes, so complexes with different N fit in one file; a value
+    missing for a complex is left empty."""
+    columns = sorted({c for report in reports for c in report}, key=column_key)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", newline="") as stream:
         writer = csv.writer(stream)
-        writer.writerow(header)
-        for result in results:
-            success = result["success"]
-            row = [result["complex"], f"{result['time']:.2f}"]
-            row += [f"{success[c][1]:.2f}" if c in success else "" for c in cutoffs]
-            row += [f"{success[c][0]:.2f}" if c in success else "" for c in cutoffs]
-            writer.writerow(row)
+        writer.writerow(columns)
+        for report in reports:
+            writer.writerow([report.get(c, "") for c in columns])
+
+
+def success_rate_cutoffs(max_RMSD: float) -> list[float]:
+    """0.5, 1.0, ... up to max_RMSD rounded up to the 0.5 grid (0.3 -> [0.5], 2.2 -> [..., 2.5]),
+    the cutoffs of DockThor's --success-rate-by-run."""
+    cutoffs = []
+    while not cutoffs or cutoffs[-1] < max_RMSD - 1e-4:
+        cutoffs.append(0.5 * (len(cutoffs) + 1))
+    return cutoffs
+
+
+def success_rates(reports: list[dict], cutoffs: list[float]) -> dict[tuple[float, int], tuple[int, int]]:
+    """{(cutoff, K): (complexes with topK_RMSD <= cutoff, complexes with a topK_RMSD)}."""
+    table = {}
+    for k in top_ks(reports):
+        values = [float(report[f"top{k}_RMSD"]) for report in reports if report.get(f"top{k}_RMSD")]
+        for cutoff in cutoffs:
+            table[cutoff, k] = (sum(value <= cutoff for value in values), len(values))
+    return table
+
+
+def write_success_rate_txt(path: Path, reports: list[dict], cutoffs: list[float], num_run: int) -> None:
+    """success_rate.txt: for every cutoff c and every topK, the % of complexes whose topK_RMSD <= c, over the
+    complexes with a _success_rate.csv."""
+    ks = top_ks(reports)
+    table = success_rates(reports, cutoffs)
+    lines = [f"Success rate (%) of the top-N report (DockThor --success-rate), topK_RMSD <= cutoff",
+             f"Complexes with results: {len(reports)} of {num_run}",
+             ""]
+    lines.append(f"{'RMSD_cutoff':>11}" + "".join(f"{f'top{k}':>9}" for k in ks))
+    for cutoff in cutoffs:
+        cells = []
+        for k in ks:
+            hits, total = table[cutoff, k]
+            cells.append(f"{100 * hits / total:9.2f}" if total else f"{'N/A':>9}")
+        lines.append(f"{cutoff:>11g}" + "".join(cells))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n")
+
+
+def read_summary(path: Path) -> list[dict]:
+    """The rows of a qualification_summary.csv, one {column: value} per complex."""
+    with open(path, newline="") as stream:
+        return [row for row in csv.DictReader(stream) if any(row.values())]
+
+
+def generate_summary(args) -> int:
+    """--generate-summary: success_rate.txt, in the current directory, from an existing summary CSV."""
+    summary_path = args.generate_summary.expanduser().resolve()
+    try:
+        reports = read_summary(summary_path)
+    except OSError as error:
+        print(f"[error] {error}", file=sys.stderr)
+        return 1
+    if not top_ks(reports):
+        print(f"[error] {summary_path}: no topK_RMSD column, not a qualification_summary.csv", file=sys.stderr)
+        return 1
+    success_rate_path = Path.cwd() / "success_rate.txt"
+    write_success_rate_txt(success_rate_path, reports, success_rate_cutoffs(args.rmsd_cutoff), len(reports))
+    print(f"Success rates of {len(reports)} complex(es) from {summary_path}: {success_rate_path}")
+    return 0
 
 
 def summary_path_of(args, out_dirs: list[Path], toml_dir: Path) -> Path:
@@ -274,7 +339,7 @@ def summary_path_of(args, out_dirs: list[Path], toml_dir: Path) -> Path:
 
 
 def run_systems(args) -> list[str]:
-    """--systems, else every <pdb>.toml of --run-dir, else every system of config/."""
+    """--systems, else every <pdb>.toml of --config-dir, else every system of config/."""
     if args.systems:
         return args.systems
     if args.run_toml_dir is not None:
@@ -283,7 +348,7 @@ def run_systems(args) -> list[str]:
 
 
 def run(args, systems: list[str]) -> int:
-    dockthor = args.run_path.expanduser().resolve()
+    dockthor = args.dockthor_path.expanduser().resolve()
     if not dockthor.is_file():
         print(f"[error] DockThor binary not found: {dockthor}", file=sys.stderr)
         return 1
@@ -292,6 +357,9 @@ def run(args, systems: list[str]) -> int:
     if args.mpi:
         launcher = [args.mpirun, "-n", str(args.np), *shlex.split(args.mpi_args)]
     dockthor_args = shlex.split(args.dockthor_args)
+    if "--success-rate" not in dockthor_args:
+        # Without it DockThor writes no _success_rate.csv, and the docking is lost for the summary.
+        dockthor_args.append("--success-rate")
     output_dir = args.output_dir.expanduser() if args.output_dir is not None else None
     if output_dir is not None:
         dockthor_args = ["--output-dir", str(output_dir), *dockthor_args]
@@ -306,15 +374,26 @@ def run(args, systems: list[str]) -> int:
     tomls = [t for t in tomls if t.is_file()]
 
     failed = []
-    results = []
+    reports = []  # one _success_rate.csv row per complex with results, run now or skipped as done
     out_dirs = [d for t in tomls if (d := system_dir_of(t, args.dataset, output_dir)) is not None]
     summary_path = summary_path_of(args, out_dirs, toml_dir)
+    success_rate_path = summary_path.with_name("success_rate.txt")
+    cutoffs = success_rate_cutoffs(args.rmsd_cutoff)
+
+    def write_reports() -> None:  # rewritten after every complex, so an interrupted set keeps what is done
+        write_summary(summary_path, reports)
+        write_success_rate_txt(success_rate_path, reports, cutoffs, len(tomls))
+
     total_start = time.monotonic()
     for index, toml_path in enumerate(tomls, start=1):
         pdb = toml_path.stem
         out_dir = system_dir_of(toml_path, args.dataset, output_dir)
         if args.skip_done and out_dir is not None and any(out_dir.glob("*_docked.csv")):
             print(f"[{index}/{len(tomls)}] {pdb}: skip, results already in {out_dir}")
+            if report := read_success_rate(out_dir):
+                reports.append(report)
+                if not args.dry_run:
+                    write_reports()
             continue
 
         # Run from the set root: the input paths in the TOML are relative to it.
@@ -335,20 +414,20 @@ def run(args, systems: list[str]) -> int:
         elapsed = time.monotonic() - start
         status = "ok" if returncode == 0 else f"FAILED (exit {returncode})"
         print(f"    {status} in {elapsed:.1f}s" + (f", log: {log_path}" if log_path else ""))
-        results.append({"complex": pdb,
-                        "time": elapsed,
-                        "success": read_success_rate(out_dir) if returncode == 0 and out_dir else {}})
-        write_summary(summary_path, results)  # rewritten after every system, so an interrupted set keeps its rows
+        if returncode == 0 and out_dir is not None and (report := read_success_rate(out_dir)):
+            reports.append(report)
+        write_reports()
         if returncode != 0:
             failed.append(pdb)
             if args.stop_on_error:
                 break
 
     print(f"Ran {len(tomls)} system(s) in {time.monotonic() - total_start:.1f}s, {len(failed)} failed.")
-    if results:
-        print(f"Summary: {summary_path}")
-        if not any(r["success"] for r in results):
-            print("[warn] no success rates found; set success-rate-RMSD (--set or --dockthor-args) to get them")
+    if not args.dry_run and tomls:
+        print(f"Summary: {summary_path} ({len(reports)} complex(es) with a _success_rate.csv)")
+        print(f"Success rates: {success_rate_path}")
+        if not reports:
+            print("[warn] no _success_rate.csv found; check the run logs")
     if failed:
         print("Failed: " + " ".join(failed))
     return len(failed)
@@ -360,9 +439,8 @@ def parse_args(argv=None):
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("dataset", type=Path, nargs="?",
-                        help="Qualification set root (contains config/, ligand/, receptor/, ...). Omit it with "
-                             "--git-url, or with --run-dir to infer it from the TOMLs; with none of them, the "
-                             "repository holding this script is used.")
+                        help="Qualification set root (contains config/, ligand/, receptor/, ...). "
+                             "Omit it with --git-url, or with --config-dir to infer it from the TOMLs.")
     parser.add_argument("--systems", nargs="+", metavar="PDB", help="Only these PDB IDs (default: all in config/).")
 
     src = parser.add_argument_group("dataset from git")
@@ -380,12 +458,12 @@ def parse_args(argv=None):
     gen = parser.add_argument_group("generation")
     gen.add_argument("--generate", action="store_true", help="Write the <pdb>.toml files.")
     gen.add_argument("--output-toml-path", type=Path, metavar="DIR",
-                     help="Directory of the TOML files, written by --generate and read by --run-path "
+                     help="Directory of the TOML files, written by --generate and read by --dockthor-path "
                           "(default: the dataset root). Relative to the current directory. The ligand, receptor "
                           "and cofactor paths inside the TOMLs stay relative to the dataset root.")
     gen.add_argument("-o", "--output-dir", type=Path,
                      help="DockThor output directory; DockThor writes each system to <output-dir>/<pdb>. "
-                          "Written into the TOMLs with --generate; with --run-path it is also passed to DockThor "
+                          "Written into the TOMLs with --generate; with --dockthor-path it is also passed to DockThor "
                           "as --output-dir, overriding the TOMLs. A relative path is relative to the dataset root.")
     gen.add_argument("--set", action="append", default=[], type=parse_set_option, metavar="KEY=VALUE",
                      help="Extra DockThor option written to every TOML, e.g. --set ga-nrun=30 "
@@ -394,8 +472,8 @@ def parse_args(argv=None):
     gen.add_argument("--overwrite", action="store_true", help="Overwrite existing TOML files.")
 
     exe = parser.add_argument_group("execution")
-    exe.add_argument("--run-path", type=Path, metavar="DOCKTHOR", help="Path to the dockthor binary; runs every TOML.")
-    exe.add_argument("--run-dir", type=Path, metavar="DIR",
+    exe.add_argument("--dockthor-path", type=Path, metavar="DOCKTHOR", help="Path to the dockthor binary; runs every TOML.")
+    exe.add_argument("--config-dir", type=Path, metavar="DIR",
                      help="Run the TOMLs that already exist in DIR (every <pdb>.toml, or --systems) instead of "
                           "the generated ones. Their input paths must be relative to the dataset root. With a "
                           "dataset or --git-url, a relative DIR is relative to the dataset root (e.g. 'toml'); "
@@ -405,11 +483,19 @@ def parse_args(argv=None):
     exe.add_argument("--np", type=int, default=4, help="Number of MPI processes (with --mpi).")
     exe.add_argument("--mpirun", default="mpirun", help="MPI launcher command.")
     exe.add_argument("--mpi-args", default="", help="Extra launcher arguments; use the = form, e.g. --mpi-args=--oversubscribe.")
-    exe.add_argument("--dockthor-args", default="", help="Extra command-line arguments passed to DockThor; use the = form, e.g. --dockthor-args='--seed 7'.")
+    exe.add_argument("--dockthor-args", default="", help="Extra command-line arguments passed to DockThor; use the = form, e.g. --dockthor-args='--seed 7'. "
+                          "--success-rate is always added.")
     exe.add_argument("--summary-csv", type=Path, metavar="FILE",
-                     help="Summary of the executed systems: complex, execution_time (s), RMSD_<cutoff>... and "
-                          "Energy_<cutoff>... success rates in %% (default: qualification_summary.csv in the common "
-                          "output directory, else next to the TOMLs).")
+                     help="Consolidation of every <pdb>/<ligand>_docked_success_rate.csv (DockThor --success-rate): "
+                          "complex, execution_time(s), num_top, top1_E, top1_RMSD, ..., topN_E, topN_RMSD, one row "
+                          "per complex (default: qualification_summary.csv in the common output directory, else "
+                          "next to the TOMLs). success_rate.txt is written next to it.")
+    exe.add_argument("--rmsd-cutoff", type=float, default=2.0, metavar="RMSD",
+                     help="Largest RMSD cutoff of success_rate.txt: for each cutoff 0.5, 1.0, ... up to RMSD "
+                          "(rounded up to 0.5) and each topK, the %% of complexes with topK_RMSD <= cutoff.")
+    exe.add_argument("--generate-summary", type=Path, metavar="CSV",
+                     help="Only write success_rate.txt, in the current directory, from the existing "
+                          "qualification_summary.csv CSV (with --rmsd-cutoff); nothing is generated or docked.")
     exe.add_argument("--skip-done", action="store_true", help="Skip systems that already have a *_docked.csv in <output-dir>/<pdb>.")
     exe.add_argument("--stop-on-error", action="store_true", help="Stop at the first failing system.")
     exe.add_argument("--dry-run", action="store_true", help="Print the commands without running them.")
@@ -418,59 +504,70 @@ def parse_args(argv=None):
                           "<output-dir>/<pdb>/<pdb>_run.log.")
 
     args = parser.parse_args(argv)
+    if args.generate_summary is not None:
+        if args.dataset is not None or args.git_url or args.config_dir or args.generate or args.dockthor_path:
+            parser.error("--generate-summary runs alone: drop the dataset, --git-url, --config-dir, "
+                         "--generate and --dockthor-path")
+        if args.rmsd_cutoff <= 0:
+            parser.error("--rmsd-cutoff must be positive")
+        args.parser = parser
+        return args
     if args.dataset is not None and args.git_url is not None:
         parser.error("give either the dataset directory or --git-url, not both")
-    if args.dataset is None and args.git_url is None and args.run_dir is None:
-        if not (REPOSITORY_ROOT / "config").is_dir():
-            parser.error("give the dataset directory, --git-url, or --run-dir with the TOMLs")
-        args.dataset = REPOSITORY_ROOT  # the script runs from a dataset repository: use it
-    if args.dataset is None and args.git_url is None and args.generate and args.run_dir is not None:
+    if args.dataset is None and args.git_url is None and args.config_dir is None:
+        parser.error("give the dataset directory, --git-url, or --config-dir with the TOMLs "
+                     "(or --generate-summary CSV)")
+    if args.dataset is None and args.git_url is None and args.generate:
         parser.error("--generate needs the dataset directory or --git-url")
     if args.git_url is None and (args.git_ref or args.git_subdir or args.clone_dir or args.git_update):
         parser.error("--git-ref, --git-subdir, --clone-dir and --git-update need --git-url")
-    if not args.generate and args.run_path is None and args.git_url is None:
-        parser.error("nothing to do: pass --generate and/or --run-path")
+    if not args.generate and args.dockthor_path is None and args.git_url is None:
+        parser.error("nothing to do: pass --generate and/or --dockthor-path")
     if args.generate and args.output_dir is None:
         parser.error("--generate requires --output-dir")
-    if args.run_dir is not None and args.run_path is None:
-        parser.error("--run-dir requires --run-path")
+    if args.config_dir is not None and args.dockthor_path is None:
+        parser.error("--config-dir requires --dockthor-path")
+    if args.rmsd_cutoff <= 0:
+        parser.error("--rmsd-cutoff must be positive")
     args.parser = parser
     return args
 
 
 def resolve_dataset(args) -> None:
-    """Set args.dataset (cloning it first with --git-url, or inferring it from --run-dir) and args.toml_dir."""
+    """Set args.dataset (cloning it first with --git-url, or inferring it from --config-dir) and args.toml_dir."""
     if args.dataset is None and args.git_url is None:
-        toml_dir = args.run_dir.expanduser().resolve()
+        toml_dir = args.config_dir.expanduser().resolve()
         if not toml_dir.is_dir():
-            args.parser.error(f"--run-dir {toml_dir} is not a directory")
+            args.parser.error(f"--config-dir {toml_dir} is not a directory")
         dataset = infer_dataset(toml_dir)
         if dataset is None:
             args.parser.error(f"cannot find the dataset root of the TOMLs in {toml_dir}: no folder from there up "
                               "holds their ligand and receptor; pass the dataset directory")
         print(f"Dataset root (from the TOMLs): {dataset}")
-        args.run_dir = toml_dir  # absolute, so it does not depend on the dataset root below
+        args.config_dir = toml_dir  # absolute, so it does not depend on the dataset root below
     else:
         dataset = clone_dataset(args) if args.git_url else args.dataset
     args.dataset = dataset.expanduser().resolve()
     args.toml_dir = args.output_toml_path.expanduser().resolve() if args.output_toml_path else args.dataset
     args.run_toml_dir = None
-    if args.run_dir is not None:
-        args.run_toml_dir = (args.dataset / args.run_dir.expanduser()).resolve()  # an absolute DIR stays as is
+    if args.config_dir is not None:
+        args.run_toml_dir = (args.dataset / args.config_dir.expanduser()).resolve()  # an absolute DIR stays as is
         if not args.run_toml_dir.is_dir():
-            args.parser.error(f"--run-dir {args.run_toml_dir} is not a directory")
-    needs_config = args.generate or (args.run_path is not None and args.run_dir is None and not args.systems)
+            args.parser.error(f"--config-dir {args.run_toml_dir} is not a directory")
+    needs_config = args.generate or (args.dockthor_path is not None and args.config_dir is None and not args.systems)
     if needs_config and not (args.dataset / "config").is_dir():
         args.parser.error(f"{args.dataset} has no config/ directory")
 
 
 def main(argv=None) -> int:
     args = parse_args(argv)
+    if args.generate_summary is not None:
+        return generate_summary(args)
     resolve_dataset(args)
     errors = 0
     if args.generate:
         errors += generate(args, args.systems or discover_systems(args.dataset))
-    if args.run_path is not None:
+    if args.dockthor_path is not None:
         errors += run(args, run_systems(args))
     return 1 if errors else 0
 
