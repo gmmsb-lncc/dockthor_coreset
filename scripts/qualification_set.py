@@ -16,8 +16,8 @@ The qualification set directory is expected to contain:
 `--dockthor-path <dockthor>` runs DockThor, from the set root, on every `<pdb>.toml`
 found there, always with DockThor's `--success-rate` (added when `--dockthor-args` lacks it), then writes
 qualification_summary.csv, the consolidation of every <ligand>_docked_success_rate.csv,
-and success_rate.txt, the % of complexes whose topK_RMSD <= cutoff for every topK
-and every cutoff 0.5, 1.0, ... up to `--rmsd-cutoff`. Both can be given in the same call.
+and success_rate.txt, the % of complexes whose topK_RMSD <= cutoff for every topK (and whose
+overall_min_RMSD <= cutoff, column overall) and every cutoff 0.5, 1.0, ... up to `--rmsd-cutoff`. Both can be given in the same call.
 `--generate-summary <qualification_summary.csv>` only writes success_rate.txt, in the current directory,
 from an existing summary (e.g. one joined by hand from interrupted runs); it docks nothing.
 `--git-url <repo>` clones the set from a git repository (GitHub or any git URL)
@@ -228,8 +228,9 @@ def run_logged(command: list[str], cwd: Path, log_path: Path, echo: bool) -> int
 
 def read_success_rate(out_dir: Path) -> dict[str, str]:
     """{column: value} of DockThor's one-row <ligand>_docked_success_rate.csv (--success-rate):
-    complex, execution_time(s), num_top, top1_E, top1_RMSD, ..., topN_E, topN_RMSD. Any N is accepted;
-    empty if absent or malformed."""
+    complex, execution_time(s), num_top, overall_min_RMSD_E, overall_min_RMSD, top1_E, top1_RMSD, ..., topN_E,
+    topN_RMSD. Any N is accepted (overall_min_RMSD* is absent in files of older DockThor builds); empty if absent
+    or malformed."""
     for path in sorted(out_dir.glob("*_docked_success_rate.csv")):
         with open(path, newline="") as stream:
             rows = [row for row in csv.reader(stream) if row]
@@ -239,9 +240,9 @@ def read_success_rate(out_dir: Path) -> dict[str, str]:
 
 
 def column_key(column: str) -> tuple:
-    """Summary column order: complex, execution_time(s), num_top, top1_E, top1_RMSD, top2_E, ...
-    Unknown columns go last, by name."""
-    fixed = ["complex", "execution_time(s)", "num_top"]
+    """Summary column order: complex, execution_time(s), num_top, overall_min_RMSD_E, overall_min_RMSD, top1_E,
+    top1_RMSD, top2_E, ... Unknown columns go last, by name."""
+    fixed = ["complex", "execution_time(s)", "num_top", "overall_min_RMSD_E", "overall_min_RMSD"]
     if column in fixed:
         return (0, fixed.index(column))
     if match := re.fullmatch(r"top(\d+)_(E|RMSD)", column):
@@ -277,29 +278,40 @@ def success_rate_cutoffs(max_RMSD: float) -> list[float]:
     return cutoffs
 
 
-def success_rates(reports: list[dict], cutoffs: list[float]) -> dict[tuple[float, int], tuple[int, int]]:
-    """{(cutoff, K): (complexes with topK_RMSD <= cutoff, complexes with a topK_RMSD)}."""
+OVERALL = "overall"  # success-rate column of overall_min_RMSD, before the topK ones
+
+
+def rate_columns(reports: list[dict]) -> list[tuple[str, str]]:
+    """(label, summary column) of every success_rate.txt column: overall (overall_min_RMSD, the lowest RMSD over
+    all the leaders) when a report has it, then top1 ... topN."""
+    columns = [(OVERALL, "overall_min_RMSD")] if any(report.get("overall_min_RMSD") for report in reports) else []
+    return columns + [(f"top{k}", f"top{k}_RMSD") for k in top_ks(reports)]
+
+
+def success_rates(reports: list[dict], cutoffs: list[float]) -> dict[tuple[float, str], tuple[int, int]]:
+    """{(cutoff, label): (complexes with that RMSD <= cutoff, complexes with that RMSD)}, label topK or overall."""
     table = {}
-    for k in top_ks(reports):
-        values = [float(report[f"top{k}_RMSD"]) for report in reports if report.get(f"top{k}_RMSD")]
+    for label, column in rate_columns(reports):
+        values = [float(report[column]) for report in reports if report.get(column)]
         for cutoff in cutoffs:
-            table[cutoff, k] = (sum(value <= cutoff for value in values), len(values))
+            table[cutoff, label] = (sum(value <= cutoff for value in values), len(values))
     return table
 
 
 def write_success_rate_txt(path: Path, reports: list[dict], cutoffs: list[float], num_run: int) -> None:
-    """success_rate.txt: for every cutoff c and every topK, the % of complexes whose topK_RMSD <= c, over the
-    complexes with a _success_rate.csv."""
-    ks = top_ks(reports)
+    """success_rate.txt: for every cutoff c and every topK, the % of complexes whose topK_RMSD <= c, and in the
+    overall column the % whose overall_min_RMSD <= c, over the complexes with a _success_rate.csv."""
+    columns = rate_columns(reports)
     table = success_rates(reports, cutoffs)
-    lines = [f"Success rate (%) of the top-N report (DockThor --success-rate), topK_RMSD <= cutoff",
-             f"Complexes with results: {len(reports)} of {num_run}",
-             ""]
-    lines.append(f"{'RMSD_cutoff':>11}" + "".join(f"{f'top{k}':>9}" for k in ks))
+    lines = ["Success rate (%) of the top-N report (DockThor --success-rate), topK_RMSD <= cutoff"]
+    if any(label == OVERALL for label, _ in columns):
+        lines.append("overall: overall_min_RMSD <= cutoff (the lowest-RMSD leader of all the leaders)")
+    lines += [f"Complexes with results: {len(reports)} of {num_run}", ""]
+    lines.append(f"{'RMSD_cutoff':>11}" + "".join(f"{label:>9}" for label, _ in columns))
     for cutoff in cutoffs:
         cells = []
-        for k in ks:
-            hits, total = table[cutoff, k]
+        for label, _ in columns:
+            hits, total = table[cutoff, label]
             cells.append(f"{100 * hits / total:9.2f}" if total else f"{'N/A':>9}")
         lines.append(f"{cutoff:>11g}" + "".join(cells))
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -487,12 +499,15 @@ def parse_args(argv=None):
                           "--success-rate is always added.")
     exe.add_argument("--summary-csv", type=Path, metavar="FILE",
                      help="Consolidation of every <pdb>/<ligand>_docked_success_rate.csv (DockThor --success-rate): "
-                          "complex, execution_time(s), num_top, top1_E, top1_RMSD, ..., topN_E, topN_RMSD, one row "
+                          "complex, execution_time(s), num_top, overall_min_RMSD_E, overall_min_RMSD (energy and RMSD "
+                          "of the lowest-RMSD leader of the all-runs clustering), top1_E, top1_RMSD, ..., "
+                          "topN_E, topN_RMSD, one row "
                           "per complex (default: qualification_summary.csv in the common output directory, else "
                           "next to the TOMLs). success_rate.txt is written next to it.")
     exe.add_argument("--rmsd-cutoff", type=float, default=2.0, metavar="RMSD",
                      help="Largest RMSD cutoff of success_rate.txt: for each cutoff 0.5, 1.0, ... up to RMSD "
-                          "(rounded up to 0.5) and each topK, the %% of complexes with topK_RMSD <= cutoff.")
+                          "(rounded up to 0.5) and each topK, the %% of complexes with topK_RMSD <= cutoff, and in the "
+                          "overall column with overall_min_RMSD <= cutoff.")
     exe.add_argument("--generate-summary", type=Path, metavar="CSV",
                      help="Only write success_rate.txt, in the current directory, from the existing "
                           "qualification_summary.csv CSV (with --rmsd-cutoff); nothing is generated or docked.")

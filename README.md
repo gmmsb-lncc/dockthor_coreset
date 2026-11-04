@@ -251,7 +251,8 @@ The exit status is non-zero when any complex fails or a TOML cannot be generated
 | `--success-rate-top N` | N of the top-N report (default 10); requires `--success-rate` |
 | `--success-rate-by-run R` | Per-run success rates at 0.5, 1.0, ... up to `R` Å (rounded up to 0.5); also writes every run's leaders (`--log-every-run`). Kept in each complex's directory, not in the summary |
 | `--success-rate-RMSD` | Deprecated: DockThor stops with an error |
-| `--symmetric-RMSD` | Symmetry-aware RMSD for clustering and the success rate. More accurate for symmetric ligands, much slower (§6) |
+| `--symmetric-RMSD` | Symmetry-aware RMSD to the crystal ligand (`RMSD_ref`, so the success rate); the clustering keeps the plain heavy-atom RMSD. More accurate for symmetric ligands (§6) |
+| `--symmetric-RMSD-clustering` | Deprecated (DockThor warns): the former `--symmetric-RMSD`, symmetry-aware RMSD for the clustering too; much slower (§6) |
 | `--seed N` | RNG seed, for repeating a qualification exactly |
 | `--ga-evaluations N`, `--ga-init-evaluations N` | Length of the evolution (lower for quick checks) |
 | `--ocl-device-type`, `--ocl-platform-name` | GPU selection for `GENERATIONAL_OCL`; `dockthor --ocl-display-devices` lists the devices |
@@ -280,7 +281,7 @@ The output directory (`-o` or the TOML's `output-dir`) is relative to the datase
 ```
 <output-dir>/
 ├── qualification_summary.csv                    top-N report of every complex (§5.3)
-├── success_rate.txt                             success rate of the set per topK and cutoff (§5.4)
+├── success_rate.txt                             success rate of the set per topK/overall and cutoff (§5.4)
 ├── 10gs/
 │   ├── 10gs_run.log                             console output of the DockThor call
 │   ├── 10gs_ligand_docked.csv / .mol2           cluster leaders of all runs, best energy first
@@ -310,9 +311,9 @@ Each complex directory is named after its receptor file (the PDB ID). The DockTh
 `qualification_summary.csv` is the consolidation of every `<pdb>/<ligand>_docked_success_rate.csv`, the one-row top-N report DockThor writes with `--success-rate`: one row per complex, with DockThor's own columns.
 
 ```
-complex,execution_time(s),num_top,top1_E,top1_RMSD,top2_E,top2_RMSD,...,top10_E,top10_RMSD
-1bcu,2.61,100,-4.974,1.519,-4.174,0.467,...,-4.174,0.467
-1a30,3.70,100,48.371,3.471,55.014,2.435,...,65.495,1.880
+complex,execution_time(s),num_top,overall_min_RMSD_E,overall_min_RMSD,top1_E,top1_RMSD,top2_E,top2_RMSD,...,top10_E,top10_RMSD
+1bcu,2.61,100,-4.174,0.467,-4.974,1.519,-4.174,0.467,...,-4.174,0.467
+1a30,3.70,100,65.495,1.880,48.371,3.471,55.014,2.435,...,65.495,1.880
 ```
 
 | Column | Unit | Description |
@@ -320,6 +321,7 @@ complex,execution_time(s),num_top,top1_E,top1_RMSD,top2_E,top2_RMSD,...,top10_E,
 | `complex` | — | PDB ID (DockThor's receptor name) |
 | `execution_time(s)` | s | DockThor's wall time up to the report (grids, docking, clustering) |
 | `num_top` | — | Number of leaders of the all-runs clustering |
+| `overall_min_RMSD_E`, `overall_min_RMSD` | kcal/mol, Å | Energy and RMSD of the leader with the lowest RMSD over all the leaders of the all-runs clustering, not only the top N. Empty for results of DockThor 2.1.0 and earlier |
 | `topK_E`, `topK_RMSD` | kcal/mol, Å | Energy and RMSD of the lowest-RMSD pose among the K best-ranked leaders, K = 1 ... N (`--success-rate-top`, 10 by default) |
 
 The script rewrites it, and `success_rate.txt`, after every complex, so an interrupted set keeps what is done. Complexes skipped by `--skip-done` are included from their existing files, so a resumed set still gets the whole consolidation. The script always passes `--success-rate` to DockThor (it is added when `--dockthor-args` lacks it), so every docking that succeeds has its row; a complex that failed has none. When complexes use different N, the columns are the union and missing values are empty. The file goes to the common output directory (`<output-dir>/qualification_summary.csv`), or next to the TOMLs when the complexes write to different directories; `--summary-csv FILE` sets it explicitly.
@@ -330,21 +332,22 @@ DockThor computes the reports at the end of each docking; the full definition is
 
 **Top-N (`topK_*`).** The leaders of the clustering of all runs (the poses of `_docked.csv`) are sorted by energy; `topK` is the pose with the lowest RMSD to the crystal ligand among the first K. `top1` is DockThor's answer, and the RMSD can only drop as K grows: the K where it first falls below 2 Å is the rank at which the native pose shows up. When there are fewer than N leaders (`num_top` < N), the last `topK` repeat the best of them all.
 
-**Success rate of the set (`success_rate.txt`).** For every cutoff *c* = 0.5, 1.0, ... up to `--rmsd-cutoff` (rounded up to 0.5) and every `topK`, the share of complexes whose `topK_RMSD <= c`, over the complexes with a `_success_rate.csv`. `top1` at 2 Å is the classic redocking success rate; `top10` at 2 Å, how often the native pose is among the 10 best-ranked poses. With the 3 complexes above (short runs, `--rmsd-cutoff 2.2`):
+**Success rate of the set (`success_rate.txt`).** For every cutoff *c* = 0.5, 1.0, ... up to `--rmsd-cutoff` (rounded up to 0.5) and every `topK`, the share of complexes whose `topK_RMSD <= c`, over the complexes with a `_success_rate.csv`. `top1` at 2 Å is the classic redocking success rate; `top10` at 2 Å, how often the native pose is among the 10 best-ranked poses. The first column, `overall`, is the share whose `overall_min_RMSD <= c`: whether the native pose is among the leaders at all, at any rank. With the 3 complexes above (short runs, `--rmsd-cutoff 2.2`):
 
 ```
 Success rate (%) of the top-N report (DockThor --success-rate), topK_RMSD <= cutoff
+overall: overall_min_RMSD <= cutoff (the lowest-RMSD leader of all the leaders)
 Complexes with results: 3 of 3
 
-RMSD_cutoff     top1     top2     top3     top4     top5     top6     top7     top8     top9    top10
-        0.5     0.00    33.33    33.33    33.33    33.33    33.33    33.33    33.33    33.33    33.33
-          1     0.00    33.33    33.33    33.33    33.33    33.33    33.33    33.33    33.33    33.33
-        1.5     0.00    33.33    33.33    33.33    33.33    33.33    33.33    33.33    33.33    33.33
-          2    33.33    33.33    33.33    66.67    66.67    66.67    66.67    66.67    66.67    66.67
-        2.5    33.33    66.67    66.67    66.67    66.67    66.67    66.67    66.67    66.67    66.67
+RMSD_cutoff  overall     top1     top2     top3     top4     top5     top6     top7     top8     top9    top10
+        0.5    33.33     0.00    33.33    33.33    33.33    33.33    33.33    33.33    33.33    33.33    33.33
+          1    33.33     0.00    33.33    33.33    33.33    33.33    33.33    33.33    33.33    33.33    33.33
+        1.5    33.33     0.00    33.33    33.33    33.33    33.33    33.33    33.33    33.33    33.33    33.33
+          2    66.67    33.33    33.33    33.33    66.67    66.67    66.67    66.67    66.67    66.67    66.67
+        2.5   100.00    33.33    66.67    66.67    66.67    66.67    66.67    66.67    66.67    66.67    66.67
 ```
 
-`Complexes with results` is the denominator; a failed complex is left out of it, so compare it with the number of complexes run.
+`Complexes with results` is the denominator; a failed complex is left out of it, so compare it with the number of complexes run. Each column counts only the complexes that have its value: results of DockThor 2.1.0 and earlier have no `overall_min_RMSD`, so they are left out of `overall` (the column is missing when no complex has it).
 
 **From an existing summary (`--generate-summary`).** When a set was run in pieces (an interrupted run finished by hand, or complexes run on different machines) and the `qualification_summary.csv` files were joined into one, rebuild the success rates from it. `success_rate.txt` is written to the current directory, with the cutoffs of `--rmsd-cutoff`; the denominator is the number of complexes in the CSV:
 
@@ -369,7 +372,7 @@ The rate by RMSD is never below the rate by energy; the gap is the share of runs
 - **One output directory per setup.** Give every setup its own `-o` (`steadystate`, `generational_ocl`, `steadystate_sym`, ...). With `--grid-write`, DockThor reuses a grid file already in the output directory after checking only its size, receptor atom count, center and atom types, so a grid left from another build or setting can be loaded silently. Use a fresh directory, or do not pass `--grid-write`.
 - **MPI processes.** With `--np` equal to `ga-nrun` all runs evolve at once; with fewer processes each one runs several in turn (`--np 12` with 24 runs takes about twice as long per complex). `GENERATIONAL_OCL` needs a single process: no `--mpi`.
 - **Open MPI accelerator conflict.** If `mpirun` fails with a rocm/cuda accelerator error, export `OMPI_MCA_accelerator='^cuda,rocm'` (fish: `set -x OMPI_MCA_accelerator '^cuda,rocm'`) before running.
-- **Symmetric RMSD is slow.** `--symmetric-RMSD` gives lower, more correct RMSDs for ligands with symmetric groups (on `10gs`, 0.91 → 0.38 Å for one pose), which raises the rates at tight cutoffs; at 2 Å it rarely changes them. It made the clustering of `10gs` take about 6.5 minutes instead of seconds, so expect a much longer set.
+- **Symmetric RMSD.** `--symmetric-RMSD` gives lower, more correct RMSDs for ligands with symmetric groups (on `10gs`, 0.91 → 0.38 Å for one pose), which raises the rates at tight cutoffs; at 2 Å it rarely changes them. It is computed only between each leader and the crystal ligand, so the leaders are the same as without it. The deprecated `--symmetric-RMSD-clustering` (the former `--symmetric-RMSD`) also uses it in the clustering, which made the clustering of `10gs` take about 6.5 minutes instead of seconds and changes the leaders.
 - **Resuming.** `--skip-done` skips complexes with results, so a killed set resumes with the same command; the summary of the new call lists only the complexes it ran. Delete a complex's directory to run it again.
 - **Clusters.** Use `--mpirun srun` (and `--mpi-args` for its options) inside a SLURM allocation; the run logs and the summary are written as the set progresses.
 - **Checking the RMSDs outside DockThor.** `reference/<pdb>_ligand.sdf` with Open Babel's symmetry-aware `obrms` reproduces DockThor's `--symmetric-RMSD` values: `obrms -f reference/10gs_ligand.sdf steadystate/10gs/10gs_ligand_docked.mol2`.
