@@ -20,6 +20,9 @@ and success_rate.txt, the % of complexes whose topK_RMSD <= cutoff for every top
 overall_min_RMSD <= cutoff, column overall) and every cutoff 0.5, 1.0, ... up to `--rmsd-cutoff`. Both can be given in the same call.
 `--generate-summary <qualification_summary.csv>` only writes success_rate.txt, in the current directory,
 from an existing summary (e.g. one joined by hand from interrupted runs); it docks nothing.
+`--collect <dir>` writes both qualification_summary.csv and success_rate.txt from every
+<ligand>_docked_success_rate.csv under <dir> (e.g. the reports of parallel CI jobs gathered in one folder);
+it docks nothing either.
 `--git-url <repo>` clones the set from a git repository (GitHub or any git URL)
 and runs the same workflow on the clone. `--config-dir <dir>` runs TOMLs that already
 exist (e.g. the `toml/` folder of a dataset repository) instead of generated ones.
@@ -38,6 +41,7 @@ Examples:
     python3 scripts/qualification_set.py --config-dir ~/dockthor_coreset/toml -o steadystate --dockthor-path build/bin/dockthor \\
         --rmsd-cutoff 3
     python3 scripts/qualification_set.py --generate-summary steadystate/qualification_summary.csv --rmsd-cutoff 3
+    python3 scripts/qualification_set.py --collect ci_collect/steadystate_symmetric --config-dir toml
 """
 
 import argparse
@@ -226,16 +230,24 @@ def run_logged(command: list[str], cwd: Path, log_path: Path, echo: bool) -> int
     return process.returncode
 
 
+SUCCESS_RATE_CSV = "_docked_success_rate.csv"  # suffix of DockThor's --success-rate report, <ligand>_docked_success_rate.csv
+
+
+def read_success_rate_file(path: Path) -> dict[str, str]:
+    """{column: value} of one <ligand>_docked_success_rate.csv; empty if it is malformed."""
+    with open(path, newline="") as stream:
+        rows = [row for row in csv.reader(stream) if row]
+    return dict(zip(rows[0], rows[1])) if len(rows) >= 2 else {}
+
+
 def read_success_rate(out_dir: Path) -> dict[str, str]:
     """{column: value} of DockThor's one-row <ligand>_docked_success_rate.csv (--success-rate):
     complex, execution_time(s), num_top, overall_min_RMSD_E, overall_min_RMSD, top1_E, top1_RMSD, ..., topN_E,
     topN_RMSD. Any N is accepted (overall_min_RMSD* is absent in files of older DockThor builds); empty if absent
     or malformed."""
-    for path in sorted(out_dir.glob("*_docked_success_rate.csv")):
-        with open(path, newline="") as stream:
-            rows = [row for row in csv.reader(stream) if row]
-        if len(rows) >= 2:
-            return dict(zip(rows[0], rows[1]))
+    for path in sorted(out_dir.glob(f"*{SUCCESS_RATE_CSV}")):
+        if report := read_success_rate_file(path):
+            return report
     return {}
 
 
@@ -338,6 +350,54 @@ def generate_summary(args) -> int:
     success_rate_path = Path.cwd() / "success_rate.txt"
     write_success_rate_txt(success_rate_path, reports, success_rate_cutoffs(args.rmsd_cutoff), len(reports))
     print(f"Success rates of {len(reports)} complex(es) from {summary_path}: {success_rate_path}")
+    return 0
+
+
+def collect(args) -> int:
+    """--collect DIR: qualification_summary.csv and success_rate.txt from every <ligand>_docked_success_rate.csv
+    under DIR (flat, or in <pdb>/ folders), e.g. the per-complex reports of parallel runs gathered into one folder.
+    With --config-dir, the complexes are counted against its TOMLs and the missing ones are listed."""
+    root = args.collect.expanduser().resolve()
+    if not root.is_dir():
+        print(f"[error] --collect {root} is not a directory", file=sys.stderr)
+        return 1
+
+    reports = []
+    seen = set()
+    for path in sorted(root.rglob(f"*{SUCCESS_RATE_CSV}")):
+        report = read_success_rate_file(path)
+        if not report:
+            print(f"[warn] {path}: malformed, skipped")
+            continue
+        name = report.get("complex") or path.name.removesuffix(SUCCESS_RATE_CSV)
+        if name in seen:
+            print(f"[warn] {path}: a second report of {name}, skipped")
+            continue
+        seen.add(name)
+        reports.append(report)
+    reports.sort(key=lambda report: report.get("complex", ""))
+    if not reports or not top_ks(reports):
+        print(f"[error] no *{SUCCESS_RATE_CSV} with topK_RMSD columns under {root}", file=sys.stderr)
+        return 1
+
+    expected = []
+    if args.config_dir is not None:
+        toml_dir = args.config_dir.expanduser().resolve()
+        if not toml_dir.is_dir():
+            print(f"[error] --config-dir {toml_dir} is not a directory", file=sys.stderr)
+            return 1
+        expected = sorted(p.stem for p in toml_dir.glob("*.toml"))
+    num_run = len(expected) if expected else len(reports)
+
+    summary_path = args.summary_csv.expanduser().resolve() if args.summary_csv else root / "qualification_summary.csv"
+    success_rate_path = summary_path.with_name("success_rate.txt")
+    write_summary(summary_path, reports)
+    write_success_rate_txt(success_rate_path, reports, success_rate_cutoffs(args.rmsd_cutoff), num_run)
+    print(f"Collected {len(reports)} of {num_run} complex(es) from {root}")
+    print(f"Summary: {summary_path}")
+    print(f"Success rates: {success_rate_path}")
+    if missing := [pdb for pdb in expected if pdb not in seen]:
+        print(f"[warn] {len(missing)} complex(es) without results: {' '.join(missing)}")
     return 0
 
 
@@ -511,6 +571,11 @@ def parse_args(argv=None):
     exe.add_argument("--generate-summary", type=Path, metavar="CSV",
                      help="Only write success_rate.txt, in the current directory, from the existing "
                           "qualification_summary.csv CSV (with --rmsd-cutoff); nothing is generated or docked.")
+    exe.add_argument("--collect", type=Path, metavar="DIR",
+                     help="Only consolidate: write qualification_summary.csv (or --summary-csv) and success_rate.txt "
+                          "from every <ligand>_docked_success_rate.csv under DIR, flat or in <pdb>/ folders (e.g. "
+                          "the reports of parallel runs gathered in one folder). With --config-dir, the complexes "
+                          "are counted against its TOMLs and the missing ones listed. Nothing is generated or docked.")
     exe.add_argument("--skip-done", action="store_true", help="Skip systems that already have a *_docked.csv in <output-dir>/<pdb>.")
     exe.add_argument("--stop-on-error", action="store_true", help="Stop at the first failing system.")
     exe.add_argument("--dry-run", action="store_true", help="Print the commands without running them.")
@@ -519,6 +584,15 @@ def parse_args(argv=None):
                           "<output-dir>/<pdb>/<pdb>_run.log.")
 
     args = parser.parse_args(argv)
+    if args.collect is not None:
+        if (args.dataset is not None or args.git_url or args.generate or args.dockthor_path
+                or args.generate_summary is not None):
+            parser.error("--collect runs alone (with --config-dir, --summary-csv and --rmsd-cutoff): drop the "
+                         "dataset, --git-url, --generate, --dockthor-path and --generate-summary")
+        if args.rmsd_cutoff <= 0:
+            parser.error("--rmsd-cutoff must be positive")
+        args.parser = parser
+        return args
     if args.generate_summary is not None:
         if args.dataset is not None or args.git_url or args.config_dir or args.generate or args.dockthor_path:
             parser.error("--generate-summary runs alone: drop the dataset, --git-url, --config-dir, "
@@ -576,6 +650,8 @@ def resolve_dataset(args) -> None:
 
 def main(argv=None) -> int:
     args = parse_args(argv)
+    if args.collect is not None:
+        return collect(args)
     if args.generate_summary is not None:
         return generate_summary(args)
     resolve_dataset(args)
