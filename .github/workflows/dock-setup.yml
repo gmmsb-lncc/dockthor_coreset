@@ -1,0 +1,71 @@
+name: "Dock one setup (one job per complex)"
+
+# Called by qualification.yml once per setup: a matrix of one job per complex (at most 256 per matrix, the set has
+# 195). Each job docks its complex in the private DockThor release image and uploads only its one-row
+# <pdb>_ligand_docked_success_rate.csv as the artifact sr-<setup>-<pdb>. Poses, run logs and the image never leave the
+# runner: this repository and its Actions logs are public.
+
+on:
+  workflow_call:
+    inputs:
+      setup:
+        description: "steadystate_symmetric or generational_ocl_symmetric (scripts/ci/dock.sh)"
+        required: true
+        type: string
+      systems:
+        description: "JSON list of PDB IDs"
+        required: true
+        type: string
+      image:
+        description: "Release image, e.g. ghcr.io/gmmsb-lncc/dockthor:2.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  dock:
+    name: ${{ inputs.setup }} ${{ matrix.pdb }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        pdb: ${{ fromJSON(inputs.systems) }}
+    steps:
+      # Only what this complex needs: the scripts, its TOML, ligand, receptor and cofactors.
+      - name: Checkout ${{ matrix.pdb }}
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+            /toml/${{ matrix.pdb }}.toml
+            /ligand/${{ matrix.pdb }}_ligand.top
+            /receptor/${{ matrix.pdb }}.in
+            /cofactor/${{ matrix.pdb }}/
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Dock
+        env:
+          SETUP: ${{ inputs.setup }}
+          PDB: ${{ matrix.pdb }}
+          IMAGE: ${{ inputs.image }}
+        run: scripts/ci/dock.sh "$SETUP" "$PDB" "$IMAGE"
+
+      - name: Keep the success-rate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sr-${{ inputs.setup }}-${{ matrix.pdb }}
+          path: ci_out/${{ inputs.setup }}/${{ matrix.pdb }}/*_docked_success_rate.csv
+          if-no-files-found: warn
+          retention-days: 7

@@ -1,0 +1,210 @@
+name: "Qualification of a DockThor release"
+
+# Redocks the 195 complexes with every setup of the release qualification, in the private image
+# ghcr.io/gmmsb-lncc/dockthor:<version>, one job per complex, then merges the reports with
+# `qualification_set.py --collect` into dockthor_results/<version>/<setup>_qualification_summary.csv and
+# <setup>_success_rate.txt, and updates the badges in dockthor_results/badges/ (README §7).
+#
+# Started by gmmsb-lncc/dockthor-suite's release.yml after each release (repository_dispatch `dockthor-release`,
+# payload {tag, version}), or by hand from the Actions tab. Never on pull requests: forks must not reach the image.
+
+on:
+  repository_dispatch:
+    types: [dockthor-release]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Image tag (DockThor version), e.g. 2.1.0"
+        required: true
+        type: string
+      setups:
+        description: "Setups to run"
+        type: choice
+        default: both
+        options: [both, steadystate_symmetric, generational_ocl_symmetric]
+      systems:
+        description: "Only these complexes, space-separated (empty: all 195)"
+        default: ""
+        type: string
+      results-folder:
+        description: "Folder under dockthor_results/ (empty: the version)"
+        default: ""
+        type: string
+      commit:
+        description: "Commit the results and badges to main"
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qualification-${{ github.event.client_payload.version || inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      folder: ${{ steps.plan.outputs.folder }}
+      commit: ${{ steps.plan.outputs.commit }}
+      systems: ${{ steps.plan.outputs.systems }}
+      steadystate: ${{ steps.plan.outputs.steadystate }}
+      ocl: ${{ steps.plan.outputs.ocl }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: toml
+
+      - id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          PAYLOAD_VERSION: ${{ github.event.client_payload.version }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_SETUPS: ${{ inputs.setups }}
+          INPUT_SYSTEMS: ${{ inputs.systems }}
+          INPUT_FOLDER: ${{ inputs.results-folder }}
+          INPUT_COMMIT: ${{ inputs.commit }}
+        run: |
+          python3 - <<'EOF'
+          import json, os, re, sys
+          from pathlib import Path
+
+          dispatch = os.environ["EVENT"] == "repository_dispatch"
+          version = (os.environ["PAYLOAD_VERSION"] if dispatch else os.environ["INPUT_VERSION"]).strip()
+          folder = version if dispatch else (os.environ["INPUT_FOLDER"].strip() or version)
+          for name, value in (("version", version), ("results folder", folder)):
+              if not re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z.+_-]*", value):
+                  sys.exit(f"::error::invalid {name}: {value!r}")
+
+          setups = "both" if dispatch else os.environ["INPUT_SETUPS"]
+          available = sorted(p.stem for p in Path("toml").glob("*.toml"))
+          wanted = [] if dispatch else os.environ["INPUT_SYSTEMS"].split()
+          unknown = [pdb for pdb in wanted if pdb not in available]
+          if unknown:
+              sys.exit(f"::error::no TOML for: {' '.join(unknown)}")
+          systems = wanted or available
+
+          outputs = {
+              "version": version,
+              "folder": folder,
+              "commit": str(dispatch or os.environ["INPUT_COMMIT"] == "true").lower(),
+              "systems": json.dumps(systems),
+              "steadystate": str(setups in ("both", "steadystate_symmetric")).lower(),
+              "ocl": str(setups in ("both", "generational_ocl_symmetric")).lower(),
+          }
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              for key, value in outputs.items():
+                  out.write(f"{key}={value}\n")
+          print(f"DockThor {version}: {len(systems)} complex(es), setups {setups}, "
+                f"results to dockthor_results/{folder}/, commit {outputs['commit']}")
+          EOF
+
+  steadystate:
+    name: SteadyState
+    needs: plan
+    if: needs.plan.outputs.steadystate == 'true'
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/dock-setup.yml
+    with:
+      setup: steadystate_symmetric
+      systems: ${{ needs.plan.outputs.systems }}
+      image: ghcr.io/gmmsb-lncc/dockthor:${{ needs.plan.outputs.version }}
+
+  ocl:
+    name: GENERATIONAL_OCL
+    needs: plan
+    if: needs.plan.outputs.ocl == 'true'
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/dock-setup.yml
+    with:
+      setup: generational_ocl_symmetric
+      systems: ${{ needs.plan.outputs.systems }}
+      image: ghcr.io/gmmsb-lncc/dockthor:${{ needs.plan.outputs.version }}
+
+  collect:
+    name: Collect and commit
+    needs: [plan, steadystate, ocl]
+    # After both setups, even when some complexes failed: --collect lists the missing ones.
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: coreset-results-push
+      cancel-in-progress: false
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      FOLDER: ${{ needs.plan.outputs.folder }}
+      COMMIT: ${{ needs.plan.outputs.commit }}
+      RUN_STEADYSTATE: ${{ needs.plan.outputs.steadystate }}
+      RUN_OCL: ${{ needs.plan.outputs.ocl }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: sr-*
+          path: ci_artifacts
+
+      - name: Merge each setup
+        run: |
+          setups=()
+          [ "$RUN_STEADYSTATE" = "true" ] && setups+=(steadystate_symmetric)
+          [ "$RUN_OCL" = "true" ] && setups+=(generational_ocl_symmetric)
+          results="dockthor_results/$FOLDER"
+          mkdir -p "$results"
+          status=0
+          for setup in "${setups[@]}"; do
+            mkdir -p "ci_collect/$setup"
+            # One folder per artifact (sr-<setup>-<pdb>/); gather the setup's reports in one folder.
+            find ci_artifacts -path "ci_artifacts/sr-$setup-*" -name '*_docked_success_rate.csv' \
+              -exec cp {} "ci_collect/$setup/" \;
+            echo "### $setup" >> "$GITHUB_STEP_SUMMARY"
+            if python3 scripts/qualification_set.py --collect "ci_collect/$setup" --config-dir toml \
+                | tee "ci_collect/$setup.log"; then
+              cp "ci_collect/$setup/qualification_summary.csv" "$results/${setup}_qualification_summary.csv"
+              cp "ci_collect/$setup/success_rate.txt" "$results/${setup}_success_rate.txt"
+              { echo '```'; cat "$results/${setup}_success_rate.txt"; grep '^\[warn\]' "ci_collect/$setup.log" || true; echo '```'; } \
+                >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "No results." >> "$GITHUB_STEP_SUMMARY"
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: Update the badges
+        # Only for the results of a version; a manual run into another folder is a test.
+        if: needs.plan.outputs.folder == needs.plan.outputs.version
+        run: |
+          results="dockthor_results/$FOLDER"
+          badge() {  # <setup> <label>
+            if [ -f "$results/$1_qualification_summary.csv" ]; then
+              python3 scripts/ci/badge.py "$results/$1_qualification_summary.csv" \
+                --label "$2" --version "$VERSION" -o "dockthor_results/badges/$1.json"
+            fi
+          }
+          badge steadystate_symmetric "SteadyState sym"
+          badge generational_ocl_symmetric "GENERATIONAL_OCL sym"
+
+      - name: Commit to main
+        if: needs.plan.outputs.commit == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898099+github-actions[bot]@users.noreply.github.com"
+          git add "dockthor_results/$FOLDER" dockthor_results/badges
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+            exit 0
+          fi
+          git commit -m "DockThor $VERSION qualification results (automated, run $GITHUB_RUN_ID)"
+          git pull --rebase origin main
+          git push origin HEAD:main

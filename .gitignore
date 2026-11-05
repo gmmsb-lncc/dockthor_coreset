@@ -175,3 +175,6 @@ __pycache__/
 *.egg-info/
 1bcu-viz/
 .markdown-collab/
+ci_out/
+ci_collect/
+ci_artifacts/

@@ -10,7 +10,8 @@ It answers one question about a DockThor build or setting: **how often does Dock
 - [4. The qualification script](#4-the-qualification-script)
 - [5. Output](#5-output)
 - [6. Practical notes](#6-practical-notes)
-- [7. References](#7-references)
+- [7. Automated qualification of every release](#7-automated-qualification-of-every-release)
+- [8. References](#8-references)
 
 ---
 
@@ -85,7 +86,10 @@ grid-rstep=0.25
 dockthor_coreset/
 ├── README.md
 ├── scripts/
-│   └── qualification_set.py   generate and run the TOMLs, collect the success rates
+│   ├── qualification_set.py   generate and run the TOMLs, collect the success rates
+│   └── ci/                    dock.sh (one complex in the release image), badge.py (§7)
+├── .github/workflows/         qualification.yml + dock-setup.yml: the release qualification (§7)
+├── dockthor_results/          <version>/<setup>_qualification_summary.csv and _success_rate.txt; badges/ (§7)
 ├── toml/                      195 TOMLs, one per complex
 ├── receptor/                  <pdb>.in
 ├── ligand/                    <pdb>_ligand.top
@@ -94,16 +98,16 @@ dockthor_coreset/
 └── reference/                 <pdb>_ligand.sdf
 ```
 
-Results are written inside the repository, one directory per setup (`steadystate/`, `generational_ocl/`, ...); they are untracked files, not part of the dataset.
+Results are written inside the repository, one directory per setup (`steadystate/`, `generational_ocl/`, ...); they are untracked files, not part of the dataset. Only the summaries of each DockThor version are kept, in `dockthor_results/<version>/` (§7).
 
 ---
 
 ## 3. Quick start
 
-Requirements: Python 3.11+ (standard library only), git, and a DockThor build from [dockthor-suite](https://github.com/gmmsb-lncc/dockthor-suite) (its `README.md` explains the build; `build/bin/dockthor` for the CPU, `build_ocl/bin/dockthor` for OpenCL). The repository is private: clone it with SSH or your git credentials.
+Requirements: Python 3.11+ (standard library only), git, and a DockThor build from [dockthor-suite](https://github.com/gmmsb-lncc/dockthor-suite) (its `README.md` explains the build; `build/bin/dockthor` for the CPU, `build_ocl/bin/dockthor` for OpenCL). The repository is public; DockThor Suite is private.
 
 ```fish
-git clone git@github.com:gmmsb-lncc/dockthor_coreset.git
+git clone https://github.com/gmmsb-lncc/dockthor_coreset.git
 cd dockthor_coreset
 set DOCKTHOR ~/dockthor-suite        # your dockthor-suite checkout (bash: DOCKTHOR=~/dockthor-suite)
 ```
@@ -146,7 +150,7 @@ Success rates: /home/user/dockthor_coreset/steadystate/success_rate.txt
 
 1. **Generate** a TOML per complex from `config/`, `ligand/`, `receptor/` and `cofactor/` (`--generate`).
 2. **Run** DockThor on a folder of TOMLs, saving each complex's console output (`--dockthor-path`).
-3. **Summarize** the execution time and success rates of every complex run (automatic after 2).
+3. **Summarize** the execution time and success rates of every complex run (automatic after 2; alone, from reports gathered elsewhere, with `--collect`).
 
 The dataset can be this repository, any directory with the same layout, or a git repository the script clones (`--git-url`).
 
@@ -193,6 +197,14 @@ python3 scripts/qualification_set.py ~/my_set --generate -o results --set ga-nru
     --dockthor-path $DOCKTHOR/build/bin/dockthor
 ```
 
+**F. Merge reports docked elsewhere.** `--collect DIR` builds `qualification_summary.csv` and `success_rate.txt` in one shot from every `<ligand>_docked_success_rate.csv` under `DIR`, flat or in `<pdb>/` folders: the reports of parallel jobs (the release qualification, §7), of several machines, or of a set split by `--systems`. `--config-dir` counts the complexes against its TOMLs and lists the missing ones:
+
+```fish
+python3 scripts/qualification_set.py --collect gathered_reports --config-dir toml
+# Collected 193 of 195 complex(es) from .../gathered_reports
+# [warn] 2 complex(es) without results: 10gs 1bcu
+```
+
 ### 4.2 Options
 
 Values that start with `-` must use the `=` form: `--dockthor-args='--seed 7'` works, `--dockthor-args '--seed 7'` does not.
@@ -234,6 +246,7 @@ Values that start with `-` must use the `=` form: `--dockthor-args='--seed 7'` w
 | `--summary-csv FILE` | §5.3 | Path of the summary CSV; `success_rate.txt` goes next to it |
 | `--rmsd-cutoff RMSD` | §5.4 | Largest cutoff of `success_rate.txt`: 0.5, 1.0, ... up to `RMSD` (rounded up to 0.5); default 2.0 |
 | `--generate-summary CSV` | — | Only write `success_rate.txt`, in the current directory, from an existing `qualification_summary.csv` (§5.4); runs alone, nothing is generated or docked |
+| `--collect DIR` | — | Only consolidate: write `qualification_summary.csv` (or `--summary-csv`) and `success_rate.txt` from every `<ligand>_docked_success_rate.csv` under `DIR`, flat or in `<pdb>/` folders (§4.1 F). With `--config-dir`, the complexes are counted against its TOMLs and the missing ones listed. Runs alone (with `--config-dir`, `--summary-csv`, `--rmsd-cutoff`), nothing is generated or docked |
 | `--skip-done` | off | Skip complexes that already have a `*_docked.csv` in `<output-dir>/<pdb>/`: rerun the same command to resume |
 | `--stop-on-error` | off | Stop at the first complex whose DockThor call fails (default: report it and go on) |
 | `--dry-run` | off | Print the DockThor commands without running them |
@@ -379,7 +392,56 @@ The rate by RMSD is never below the rate by energy; the gap is the share of runs
 
 ---
 
-## 7. References
+## 7. Automated qualification of every release
+
+Every DockThor Suite release qualifies itself on this set with GitHub Actions. The suite's `release.yml` publishes the private image `ghcr.io/gmmsb-lncc/dockthor:<version>` (with `dockthor-mpi` and `dockthor-ocl`, dockthor-suite `doc/MANUAL.md` §4.6) and then starts `.github/workflows/qualification.yml` here.
+
+```mermaid
+flowchart LR
+    R["dockthor-suite release<br/>image dockthor:VERSION"] -->|"repository_dispatch<br/>dockthor-release"| P["plan<br/>195 complexes"]
+    P --> S["SteadyState<br/>195 jobs"]
+    P --> O["GENERATIONAL_OCL<br/>195 jobs"]
+    S -->|"sr-SETUP-PDB artifacts"| C["collect<br/>qualification_set.py --collect"]
+    O --> C
+    C --> D["commit dockthor_results/VERSION/<br/>and badges/"]
+```
+
+### 7.1 Setups
+
+One job per complex and setup (`.github/workflows/dock-setup.yml`, `scripts/ci/dock.sh`), in the release image:
+
+| Setup | Binary | Launch | `--dockthor-args` |
+|---|---|---|---|
+| `steadystate_symmetric` | `dockthor-mpi` | `--mpi --np 2 --mpi-args=--oversubscribe` | `--ga-evolution-type STEADYSTATE --ga-nrun 24 --success-rate --success-rate-by-run 3 --symmetric-RMSD` |
+| `generational_ocl_symmetric` | `dockthor-ocl` | no MPI (one process) | `--ga-evolution-type GENERATIONAL_OCL --ga-nrun 24 --success-rate --success-rate-by-run 3 --symmetric-RMSD` |
+
+The runners have no GPU: `GENERATIONAL_OCL` runs on their CPU through PoCL, so its success rates are comparable with a GPU run and its execution times are not. `--oversubscribe` lets Open MPI start 2 processes when a runner's container shows fewer physical cores.
+
+### 7.2 Results
+
+Each job keeps only its one-row `<pdb>_ligand_docked_success_rate.csv` (artifact `sr-<setup>-<pdb>`, 7 days). The `collect` job gathers them per setup, runs `--collect` (§4.1 F) and commits:
+
+- `dockthor_results/<version>/<setup>_qualification_summary.csv` and `<setup>_success_rate.txt`, as for earlier versions;
+- `dockthor_results/badges/<setup>.json`, a [shields.io endpoint](https://shields.io/badges/endpoint-badge) badge with the `overall` success rate at 2 Å (the % of complexes whose lowest-RMSD leader is within 2 Å of the crystal ligand). Shown in a README with:
+
+```markdown
+![SteadyState](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gmmsb-lncc/dockthor_coreset/main/dockthor_results/badges/steadystate_symmetric.json)
+![GENERATIONAL_OCL](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gmmsb-lncc/dockthor_coreset/main/dockthor_results/badges/generational_ocl_symmetric.json)
+```
+
+A complex whose job failed is missing from the summary and listed in the `collect` job's summary page (`Complexes with results: N of 195`).
+
+### 7.3 Running it by hand
+
+Actions → "Qualification of a DockThor release" → Run workflow, with the image version (`2.1.0`), the setups, optionally a few complexes (`1bcu 10gs`) and a results folder. Manual runs commit only when `commit` is checked, and update the badges only when the results folder is the version itself. A test into `dockthor_results/2.1.0/` would overwrite the reference results: give it another folder (`2.1.0-ci`).
+
+### 7.4 Privacy
+
+This repository and its Actions logs are public; the image is not. The image is pulled with each job's own `GITHUB_TOKEN` (`dockthor_coreset` has read access in the package settings) and is never saved, uploaded or cached. DockThor's console output and the poses stay on the runner; only the success-rate CSVs leave it. The workflows run only on `repository_dispatch` and `workflow_dispatch`, never on pull requests, so forks cannot reach the image.
+
+---
+
+## 8. References
 
 - **CASF-2013 core set:** Li, Y.; Liu, Z.; Li, J.; Han, L.; Liu, J.; Zhao, Z.; Wang, R. Comparative Assessment of Scoring Functions on an Updated Benchmark: 1. Compilation of the Test Set. *J. Chem. Inf. Model.* **2014**, 54, 1700–1716. DOI [10.1021/ci500080q](https://doi.org/10.1021/ci500080q).
 - **CASF-2013 evaluation:** Li, Y.; Han, L.; Liu, Z.; Wang, R. Comparative Assessment of Scoring Functions on an Updated Benchmark: 2. Evaluation Methods and General Results. *J. Chem. Inf. Model.* **2014**, 54, 1717–1736. DOI [10.1021/ci500081m](https://doi.org/10.1021/ci500081m).
