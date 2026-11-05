@@ -1,0 +1,9 @@
+Success rate (%) of the top-N report (DockThor --success-rate), topK_RMSD <= cutoff
+overall: overall_min_RMSD <= cutoff (the lowest-RMSD leader of all the leaders)
+Complexes with results: 195 of 195
+
+RMSD_cutoff  overall     top1     top2     top3     top4     top5     top6     top7     top8     top9    top10
+        0.5    57.95    46.67    49.23    51.79    52.82    53.33    53.33    53.85    54.36    54.36    54.36
+          1    88.72    66.67    70.26    72.82    74.87    75.90    76.92    77.44    78.46    78.97    78.97
+        1.5    92.31    74.87    78.46    80.00    81.54    83.08    83.59    84.10    85.64    86.67    86.67
+          2    93.33    79.49    83.08    84.62    85.64    86.15    86.15    86.67    87.69    88.21    88.21
