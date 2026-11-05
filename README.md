@@ -412,10 +412,10 @@ One job per complex and setup (`.github/workflows/dock-setup.yml`, `scripts/ci/d
 
 | Setup | Binary | Launch | `--dockthor-args` |
 |---|---|---|---|
-| `steadystate_symmetric` | `dockthor-mpi` | `--mpi --np 2 --mpi-args=--oversubscribe` | `--ga-evolution-type STEADYSTATE --ga-nrun 24 --success-rate --success-rate-by-run 3 --symmetric-RMSD` |
+| `steadystate_symmetric` | `dockthor-mpi` | `--mpi --np 4 --mpi-args=--oversubscribe` | `--ga-evolution-type STEADYSTATE --ga-nrun 24 --success-rate --success-rate-by-run 3 --symmetric-RMSD` |
 | `generational_ocl_symmetric` | `dockthor-ocl` | no MPI (one process) | `--ga-evolution-type GENERATIONAL_OCL --ga-nrun 24 --success-rate --success-rate-by-run 3 --symmetric-RMSD` |
 
-The runners have no GPU: `GENERATIONAL_OCL` runs on their CPU through PoCL, so its success rates are comparable with a GPU run and its execution times are not. `--oversubscribe` lets Open MPI start 2 processes when a runner's container shows fewer physical cores.
+The runners have no GPU: `GENERATIONAL_OCL` runs on their CPU through PoCL, so its success rates are comparable with a GPU run and its execution times are not. `--np 4` matches the 4 vCPUs of a public repository's runner; `--oversubscribe` lets Open MPI start them when the runner's container shows fewer physical cores. Each job may run up to 350 minutes (GitHub stops hosted jobs at 6 hours): the qualification is about the success rates, never cut short to save time, and the execution times are for information.
 
 ### 7.2 Results
 

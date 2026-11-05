@@ -23,9 +23,9 @@ common_args="--ga-nrun 24 --success-rate --success-rate-by-run 3 --symmetric-RMS
 case "$setup" in
     steadystate_symmetric)
         binary=dockthor-mpi
-        # 24 runs over 2 MPI processes. --oversubscribe: Open MPI counts physical cores as slots, and a runner's
-        # container may show fewer than its vCPUs.
-        launch=(--mpi --np 2 --mpi-args=--oversubscribe)
+        # 24 runs over 4 MPI processes, one per vCPU of a public repository's runner. --oversubscribe: Open MPI counts
+        # physical cores as slots, and a runner's container may show fewer than its vCPUs.
+        launch=(--mpi --np 4 --mpi-args=--oversubscribe)
         dockthor_args="--ga-evolution-type STEADYSTATE $common_args"
         ;;
     generational_ocl_symmetric)

@@ -29,7 +29,8 @@ jobs:
   dock:
     name: ${{ inputs.setup }} ${{ matrix.pdb }}
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # Accuracy over speed: never cut a docking short. GitHub-hosted jobs stop at 6 h (360 min).
+    timeout-minutes: 350
     strategy:
       fail-fast: false
       matrix:
