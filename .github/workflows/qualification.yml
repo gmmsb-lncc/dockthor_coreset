@@ -128,10 +128,119 @@ jobs:
       systems: ${{ needs.plan.outputs.systems }}
       image: ghcr.io/gmmsb-lncc/dockthor:${{ needs.plan.outputs.version }}
 
+  # Two retry rounds: dock again, on fresh runners, the complexes with no report yet (a failed job, often a network
+  # error while pulling the image). A job that failed and then passed on retry still marks the run as failed.
+  retry1:
+    name: Find failed complexes (retry 1)
+    needs: [plan, steadystate, ocl]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      steadystate: ${{ steps.missing.outputs.steadystate }}
+      ocl: ${{ steps.missing.outputs.ocl }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: scripts
+      - id: missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYSTEMS: ${{ needs.plan.outputs.systems }}
+          RUN_STEADYSTATE: ${{ needs.plan.outputs.steadystate }}
+          RUN_OCL: ${{ needs.plan.outputs.ocl }}
+        run: &find-missing |
+          ss='[]'; ocl='[]'
+          [ "$RUN_STEADYSTATE" = "true" ] && ss=$(scripts/ci/missing_reports.sh steadystate_symmetric)
+          [ "$RUN_OCL" = "true" ] && ocl=$(scripts/ci/missing_reports.sh generational_ocl_symmetric)
+          echo "SteadyState to retry: $ss"
+          echo "GENERATIONAL_OCL to retry: $ocl"
+          { echo "steadystate=$ss"; echo "ocl=$ocl"; } >> "$GITHUB_OUTPUT"
+
+  steadystate_retry1:
+    name: SteadyState retry 1
+    needs: [plan, retry1]
+    if: always() && needs.retry1.result == 'success' && needs.retry1.outputs.steadystate != '[]'
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/dock-setup.yml
+    with:
+      setup: steadystate_symmetric
+      systems: ${{ needs.retry1.outputs.steadystate }}
+      image: ghcr.io/gmmsb-lncc/dockthor:${{ needs.plan.outputs.version }}
+
+  ocl_retry1:
+    name: GENERATIONAL_OCL retry 1
+    needs: [plan, retry1]
+    if: always() && needs.retry1.result == 'success' && needs.retry1.outputs.ocl != '[]'
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/dock-setup.yml
+    with:
+      setup: generational_ocl_symmetric
+      systems: ${{ needs.retry1.outputs.ocl }}
+      image: ghcr.io/gmmsb-lncc/dockthor:${{ needs.plan.outputs.version }}
+
+  retry2:
+    name: Find failed complexes (retry 2)
+    needs: [plan, retry1, steadystate_retry1, ocl_retry1]
+    # Only when round 1 had something to retry.
+    if: >-
+      always() && needs.retry1.result == 'success'
+      && (needs.retry1.outputs.steadystate != '[]' || needs.retry1.outputs.ocl != '[]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      steadystate: ${{ steps.missing.outputs.steadystate }}
+      ocl: ${{ steps.missing.outputs.ocl }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: scripts
+      - id: missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYSTEMS: ${{ needs.plan.outputs.systems }}
+          RUN_STEADYSTATE: ${{ needs.plan.outputs.steadystate }}
+          RUN_OCL: ${{ needs.plan.outputs.ocl }}
+        run: *find-missing
+
+  steadystate_retry2:
+    name: SteadyState retry 2
+    needs: [plan, retry2]
+    if: always() && needs.retry2.result == 'success' && needs.retry2.outputs.steadystate != '[]'
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/dock-setup.yml
+    with:
+      setup: steadystate_symmetric
+      systems: ${{ needs.retry2.outputs.steadystate }}
+      image: ghcr.io/gmmsb-lncc/dockthor:${{ needs.plan.outputs.version }}
+
+  ocl_retry2:
+    name: GENERATIONAL_OCL retry 2
+    needs: [plan, retry2]
+    if: always() && needs.retry2.result == 'success' && needs.retry2.outputs.ocl != '[]'
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/dock-setup.yml
+    with:
+      setup: generational_ocl_symmetric
+      systems: ${{ needs.retry2.outputs.ocl }}
+      image: ghcr.io/gmmsb-lncc/dockthor:${{ needs.plan.outputs.version }}
+
   collect:
     name: Collect and commit
-    needs: [plan, steadystate, ocl]
-    # After both setups, even when some complexes failed: --collect lists the missing ones.
+    needs: [plan, steadystate, ocl, retry1, steadystate_retry1, ocl_retry1, retry2, steadystate_retry2, ocl_retry2]
+    # After both setups and the retries, even when some complexes still failed: --collect lists the missing ones.
     if: always() && needs.plan.result == 'success'
     runs-on: ubuntu-latest
     permissions:
