@@ -399,8 +399,8 @@ Every DockThor Suite release qualifies itself on this set with GitHub Actions. T
 ```mermaid
 flowchart LR
     R["dockthor-suite release<br/>image dockthor:VERSION"] -->|"repository_dispatch<br/>dockthor-release"| P["plan<br/>195 complexes"]
-    P --> S["SteadyState<br/>195 jobs"]
-    P --> O["GENERATIONAL_OCL<br/>195 jobs"]
+    P --> S["STEADYSTATE Symmetric<br/>195 jobs"]
+    P --> O["GENERATIONAL_OCL Symmetric<br/>195 jobs"]
     S -->|"sr-SETUP-PDB artifacts"| C["collect<br/>qualification_set.py --collect"]
     O --> C
     C --> D["commit dockthor_results/VERSION/<br/>and badges/"]
@@ -408,7 +408,7 @@ flowchart LR
 
 ### 7.1 Setups
 
-One job per complex and setup (`.github/workflows/dock-setup.yml`, `scripts/ci/dock.sh`), in the release image:
+The run is named `dockthor-v<version>` (`dockthor-v2.4.0`). One job per complex and setup (`.github/workflows/dock-setup.yml`, `scripts/ci/dock.sh`), in the release image, shown as `<setup job> / <pdb>` (`STEADYSTATE Symmetric / 1bcu`, `GENERATIONAL_OCL Symmetric / 1bcu`):
 
 | Setup | Binary | Launch | `--dockthor-args` |
 |---|---|---|---|
@@ -422,18 +422,20 @@ The runners have no GPU: `GENERATIONAL_OCL` runs on their CPU through PoCL, so i
 Each job keeps only its one-row `<pdb>_ligand_docked_success_rate.csv` (artifact `sr-<setup>-<pdb>`, 7 days). The `collect` job gathers them per setup, runs `--collect` (§4.1 F) and commits:
 
 - `dockthor_results/<version>/<setup>_qualification_summary.csv` and `<setup>_success_rate.txt`, as for earlier versions;
-- `dockthor_results/badges/<setup>.json`, a [shields.io endpoint](https://shields.io/badges/endpoint-badge) badge with the `overall` success rate at 2 Å (the % of complexes whose lowest-RMSD leader is within 2 Å of the crystal ligand). Shown in a README with:
+- `dockthor_results/badges/<setup>_overall.json` and `<setup>_top1.json`, two [shields.io endpoint](https://shields.io/badges/endpoint-badge) badges (`scripts/ci/badge.py`; an endpoint JSON holds one badge) with the success rate at 2 Å of the complexes with results, labeled with the version: `overall`, the % of complexes whose lowest-RMSD leader of all the runs is within 2 Å of the crystal ligand, and `top1`, the % whose best-scored pose is, the usual docking success rate (the columns of `success_rate.txt`, §5.4). Shown in a README as a table:
 
 ```markdown
-![SteadyState](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gmmsb-lncc/dockthor_coreset/main/dockthor_results/badges/steadystate_symmetric.json)
-![GENERATIONAL_OCL](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gmmsb-lncc/dockthor_coreset/main/dockthor_results/badges/generational_ocl_symmetric.json)
+| Coreset, RMSD ≤ 2 Å | Overall | Top1 |
+| --- | --- | --- |
+| STEADYSTATE Symmetric | ![overall](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gmmsb-lncc/dockthor_coreset/main/dockthor_results/badges/steadystate_symmetric_overall.json) | ![top1](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gmmsb-lncc/dockthor_coreset/main/dockthor_results/badges/steadystate_symmetric_top1.json) |
+| GENERATIONAL_OCL Symmetric | ![overall](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gmmsb-lncc/dockthor_coreset/main/dockthor_results/badges/generational_ocl_symmetric_overall.json) | ![top1](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gmmsb-lncc/dockthor_coreset/main/dockthor_results/badges/generational_ocl_symmetric_top1.json) |
 ```
 
 A complex whose job failed is missing from the summary and listed in the `collect` job's summary page (`Complexes with results: N of 195`).
 
 ### 7.3 Running it by hand
 
-Actions → "Qualification of a DockThor release" → Run workflow, with the image version (`2.1.0`), the setups, optionally a few complexes (`1bcu 10gs`) and a results folder. Manual runs commit only when `commit` is checked, and update the badges only when the results folder is the version itself. A test into `dockthor_results/2.1.0/` would overwrite the reference results: give it another folder (`2.1.0-ci`).
+Actions → "DockThor Release Coreset" → Run workflow, with the image version (`2.1.0`), the setups, optionally a few complexes (`1bcu 10gs`) and a results folder. Manual runs commit only when `commit` is checked, and update the badges only when the results folder is the version itself. A test into `dockthor_results/2.1.0/` would overwrite the reference results: give it another folder (`2.1.0-ci`).
 
 ### 7.4 Privacy
 

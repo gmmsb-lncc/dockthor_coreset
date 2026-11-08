@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
-"""Write a shields.io endpoint badge from a qualification_summary.csv.
+"""Write the shields.io endpoint badges of one setup from its qualification_summary.csv.
 
-The badge shows the overall success rate at one RMSD cutoff (default 2.0 Å): the % of complexes whose
-overall_min_RMSD (the lowest-RMSD leader of all the leaders) is within the cutoff, as in the `overall` column of
-success_rate.txt. Displayed with:
+Two badges, one JSON each (an endpoint JSON holds one badge), with the success rate at one RMSD cutoff (default
+2.0 Å), as in success_rate.txt:
 
-    https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gmmsb-lncc/dockthor_coreset/main/dockthor_results/badges/<setup>.json
+- <prefix>_overall.json: the % of complexes whose overall_min_RMSD (the lowest-RMSD leader of all the leaders, so of
+  any of the runs) is within the cutoff, the `overall` column;
+- <prefix>_top1.json: the % of complexes whose top1_RMSD (the best-scored pose) is within the cutoff, the `top1`
+  column: the usual docking success rate.
+
+The label is the DockThor version, the message the rate. Displayed with:
+
+    https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gmmsb-lncc/dockthor_coreset/main/dockthor_results/badges/<setup>_overall.json
 
 Example:
-    python3 scripts/ci/badge.py dockthor_results/2.1.0/steadystate_symmetric_qualification_summary.csv \\
-        --label "SteadyState sym" --version 2.1.0 -o dockthor_results/badges/steadystate_symmetric.json
+    python3 scripts/ci/badge.py dockthor_results/2.2.1/steadystate_symmetric_qualification_summary.csv \\
+        --version 2.2.1 -o dockthor_results/badges/steadystate_symmetric
 """
 
 import argparse
@@ -23,6 +29,9 @@ import qualification_set as qs  # noqa: E402  (scripts/qualification_set.py)
 # (lowest rate in %, shields.io color), first match wins
 COLORS = [(90.0, "brightgreen"), (80.0, "green"), (70.0, "yellowgreen"), (60.0, "yellow"), (50.0, "orange")]
 
+# badge name: column of qualification_summary.csv
+METRICS = {"overall": "overall_min_RMSD", "top1": "top1_RMSD"}
+
 
 def color_of(rate: float) -> str:
     return next((color for floor, color in COLORS if rate >= floor), "red")
@@ -31,28 +40,30 @@ def color_of(rate: float) -> str:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("summary", type=Path, help="qualification_summary.csv")
-    parser.add_argument("--label", required=True, help="Left side of the badge, e.g. 'SteadyState sym'")
-    parser.add_argument("--version", required=True, help="DockThor version, shown on the badge")
+    parser.add_argument("--version", required=True, help="DockThor version, the badge's label")
     parser.add_argument("--cutoff", type=float, default=2.0, help="RMSD cutoff in Å")
-    parser.add_argument("-o", "--output", type=Path, required=True, help="Badge JSON to write")
+    parser.add_argument(
+        "-o", "--output-prefix", type=Path, required=True, help="Badges to write: <prefix>_overall.json, _top1.json"
+    )
     args = parser.parse_args(argv)
 
     reports = qs.read_summary(args.summary)
-    values = [float(r["overall_min_RMSD"]) for r in reports if r.get("overall_min_RMSD")]
-    if not values:
-        print(f"[error] {args.summary}: no overall_min_RMSD values", file=sys.stderr)
-        return 1
-    rate = 100 * sum(v <= args.cutoff for v in values) / len(values)
-
-    badge = {
-        "schemaVersion": 1,
-        "label": f"{args.label} {args.version}",
-        "message": f"{rate:.1f}% ≤ {args.cutoff:g} Å",
-        "color": color_of(rate),
-    }
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(badge, ensure_ascii=False, indent=2) + "\n")
-    print(f"{args.output}: {badge['label']}: {badge['message']} ({len(values)} complexes)")
+    for name, column in METRICS.items():
+        values = [float(r[column]) for r in reports if r.get(column)]
+        if not values:
+            print(f"[error] {args.summary}: no {column} values", file=sys.stderr)
+            return 1
+        rate = 100 * sum(v <= args.cutoff for v in values) / len(values)
+        badge = {
+            "schemaVersion": 1,
+            "label": args.version,
+            "message": f"{rate:.1f}% ≤ {args.cutoff:g} Å",
+            "color": color_of(rate),
+        }
+        output = args.output_prefix.with_name(f"{args.output_prefix.name}_{name}.json")
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(badge, ensure_ascii=False, indent=2) + "\n")
+        print(f"{output}: {name} {badge['label']}: {badge['message']} ({len(values)} complexes)")
     return 0
 
 

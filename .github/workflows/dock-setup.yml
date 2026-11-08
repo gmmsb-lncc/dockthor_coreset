@@ -27,7 +27,8 @@ permissions:
 
 jobs:
   dock:
-    name: ${{ inputs.setup }} ${{ matrix.pdb }}
+    # The complex only: the caller's job name already gives the setup ("STEADYSTATE Symmetric / 1bcu").
+    name: ${{ matrix.pdb }}
     runs-on: ubuntu-latest
     # Accuracy over speed: never cut a docking short. GitHub-hosted jobs stop at 6 h (360 min).
     timeout-minutes: 350

@@ -1,4 +1,6 @@
-name: "Qualification of a DockThor release"
+name: "DockThor Release Coreset"
+# The run shows the version it qualifies (dockthor-v2.4.0), not the event type.
+run-name: "dockthor-v${{ github.event.client_payload.version || inputs.version }}"
 
 # Redocks the 195 complexes with every setup of the release qualification, in the private image
 # ghcr.io/gmmsb-lncc/dockthor:<version>, one job per complex, then merges the reports with
@@ -103,7 +105,7 @@ jobs:
           EOF
 
   steadystate:
-    name: SteadyState
+    name: STEADYSTATE Symmetric
     needs: plan
     if: needs.plan.outputs.steadystate == 'true'
     permissions:
@@ -116,7 +118,7 @@ jobs:
       image: ghcr.io/gmmsb-lncc/dockthor:${{ needs.plan.outputs.version }}
 
   ocl:
-    name: GENERATIONAL_OCL
+    name: GENERATIONAL_OCL Symmetric
     needs: plan
     if: needs.plan.outputs.ocl == 'true'
     permissions:
@@ -160,7 +162,7 @@ jobs:
           { echo "steadystate=$ss"; echo "ocl=$ocl"; } >> "$GITHUB_OUTPUT"
 
   steadystate_retry1:
-    name: SteadyState retry 1
+    name: STEADYSTATE Symmetric retry 1
     needs: [plan, retry1]
     if: always() && needs.retry1.result == 'success' && needs.retry1.outputs.steadystate != '[]'
     permissions:
@@ -173,7 +175,7 @@ jobs:
       image: ghcr.io/gmmsb-lncc/dockthor:${{ needs.plan.outputs.version }}
 
   ocl_retry1:
-    name: GENERATIONAL_OCL retry 1
+    name: GENERATIONAL_OCL Symmetric retry 1
     needs: [plan, retry1]
     if: always() && needs.retry1.result == 'success' && needs.retry1.outputs.ocl != '[]'
     permissions:
@@ -212,7 +214,7 @@ jobs:
         run: *find-missing
 
   steadystate_retry2:
-    name: SteadyState retry 2
+    name: STEADYSTATE Symmetric retry 2
     needs: [plan, retry2]
     if: always() && needs.retry2.result == 'success' && needs.retry2.outputs.steadystate != '[]'
     permissions:
@@ -225,7 +227,7 @@ jobs:
       image: ghcr.io/gmmsb-lncc/dockthor:${{ needs.plan.outputs.version }}
 
   ocl_retry2:
-    name: GENERATIONAL_OCL retry 2
+    name: GENERATIONAL_OCL Symmetric retry 2
     needs: [plan, retry2]
     if: always() && needs.retry2.result == 'success' && needs.retry2.outputs.ocl != '[]'
     permissions:
@@ -295,14 +297,13 @@ jobs:
         if: needs.plan.outputs.folder == needs.plan.outputs.version
         run: |
           results="dockthor_results/$FOLDER"
-          badge() {  # <setup> <label>
-            if [ -f "$results/$1_qualification_summary.csv" ]; then
-              python3 scripts/ci/badge.py "$results/$1_qualification_summary.csv" \
-                --label "$2" --version "$VERSION" -o "dockthor_results/badges/$1.json"
+          for setup in steadystate_symmetric generational_ocl_symmetric; do
+            # <setup>_overall.json and <setup>_top1.json
+            if [ -f "$results/${setup}_qualification_summary.csv" ]; then
+              python3 scripts/ci/badge.py "$results/${setup}_qualification_summary.csv" \
+                --version "$VERSION" -o "dockthor_results/badges/$setup"
             fi
-          }
-          badge steadystate_symmetric "SteadyState sym"
-          badge generational_ocl_symmetric "GENERATIONAL_OCL sym"
+          done
 
       - name: Commit to main
         if: needs.plan.outputs.commit == 'true'
