@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "label": "2.3.0",
-  "message": "80.0% ≤ 2 Å",
-  "color": "green"
+  "label": "2.4.0",
+  "message": "79.5% ≤ 2 Å",
+  "color": "yellowgreen"
 }
