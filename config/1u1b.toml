@@ -1,0 +1,7 @@
+## DockThor qualification set: 1u1b
+
+output-dir="vcoreset_run"
+ligand="ligand/1u1b_ligand.top"
+receptor="receptor/1u1b.in"
+grid-size=[24.777,24.777,24.777]
+grid-center=[-27.7335,-28.2495,15.998]

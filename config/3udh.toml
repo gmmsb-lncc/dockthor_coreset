@@ -1,0 +1,8 @@
+## DockThor qualification set: 3udh
+
+output-dir="vcoreset_run"
+ligand="ligand/3udh_ligand.top"
+receptor="receptor/3udh.in"
+cofactors-path="cofactor/3udh"
+grid-size=[15.822,15.822,15.822]
+grid-center=[24.133,36.1895,41.682]

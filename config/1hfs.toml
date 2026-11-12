@@ -1,0 +1,10 @@
+## DockThor qualification set: 1hfs
+
+output-dir="vcoreset_run"
+ligand="ligand/1hfs_ligand.top"
+receptor="receptor/1hfs.in"
+cofactors-path="cofactor/1hfs"
+grid-size=[27.434,27.434,27.434]
+grid-center=[34.206,35.852,26.237]
+# grid points: 1331000 (110 x 110 x 110), over DockThor's default limit 1000000
+grid-max-points=1331000

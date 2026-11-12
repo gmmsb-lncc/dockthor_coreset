@@ -1,0 +1,8 @@
+## DockThor qualification set: 2r23
+
+output-dir="vcoreset_run"
+ligand="ligand/2r23_ligand.top"
+receptor="receptor/2r23.in"
+cofactors-path="cofactor/2r23"
+grid-size=[17.785,17.785,17.785]
+grid-center=[-7.9485,0.9735,68.346]

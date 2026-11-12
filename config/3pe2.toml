@@ -1,0 +1,7 @@
+## DockThor qualification set: 3pe2
+
+output-dir="vcoreset_run"
+ligand="ligand/3pe2_ligand.top"
+receptor="receptor/3pe2.in"
+grid-size=[19.072,19.072,19.072]
+grid-center=[22.8185,-30.423,15.449]

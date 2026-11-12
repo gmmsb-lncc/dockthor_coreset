@@ -1,0 +1,7 @@
+## DockThor qualification set: 3coy
+
+output-dir="vcoreset_run"
+ligand="ligand/3coy_ligand.top"
+receptor="receptor/3coy.in"
+grid-size=[24.126,24.126,24.126]
+grid-center=[14.782,10.196,1.253]

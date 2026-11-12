@@ -1,8 +1,0 @@
-## DockThor qualification set: 3owj
-
-output-dir="vcoreset_run"
-ligand="ligand/3owj_ligand.top"
-receptor="receptor/3owj.in"
-grid-size=[17.589,17.589,17.589]
-grid-center=[22.4875,7.2675,15.3005]
-grid-rstep=0.25

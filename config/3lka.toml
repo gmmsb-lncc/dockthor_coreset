@@ -1,0 +1,8 @@
+## DockThor qualification set: 3lka
+
+output-dir="vcoreset_run"
+ligand="ligand/3lka_ligand.top"
+receptor="receptor/3lka.in"
+cofactors-path="cofactor/3lka"
+grid-size=[15.347,15.347,15.347]
+grid-center=[3.937,-6.487,7.1055]

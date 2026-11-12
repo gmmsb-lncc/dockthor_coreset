@@ -1,0 +1,9 @@
+## DockThor qualification set: 1jyq
+
+output-dir="vcoreset_run"
+ligand="ligand/1jyq_ligand.top"
+receptor="receptor/1jyq.in"
+grid-size=[27.546,27.546,27.546]
+grid-center=[-26.6665,46.043,33.8795]
+# grid points: 1367631 (111 x 111 x 111), over DockThor's default limit 1000000
+grid-max-points=1367631

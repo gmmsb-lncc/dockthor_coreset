@@ -1,0 +1,8 @@
+## DockThor qualification set: 3oe5
+
+output-dir="vcoreset_run"
+ligand="ligand/3oe5_ligand.top"
+receptor="receptor/3oe5.in"
+cofactors-path="cofactor/3oe5"
+grid-size=[23.407,23.407,23.407]
+grid-center=[19.7925,-28.903,9.385]

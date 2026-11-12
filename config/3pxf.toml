@@ -1,0 +1,7 @@
+## DockThor qualification set: 3pxf
+
+output-dir="vcoreset_run"
+ligand="ligand/3pxf_ligand.top"
+receptor="receptor/3pxf.in"
+grid-size=[18.237,18.237,18.237]
+grid-center=[122.6055,134.233,65.7765]

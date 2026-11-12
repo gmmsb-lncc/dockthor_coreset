@@ -1,9 +1,0 @@
-## DockThor qualification set: 3muz
-
-output-dir="vcoreset_run"
-ligand="ligand/3muz_ligand.top"
-receptor="receptor/3muz.in"
-cofactors-path="cofactor/3muz"
-grid-size=[14.993,14.993,14.993]
-grid-center=[15.1855,28.2885,74.9015]
-grid-rstep=0.25

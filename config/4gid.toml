@@ -1,0 +1,9 @@
+## DockThor qualification set: 4gid
+
+output-dir="vcoreset_run"
+ligand="ligand/4gid_ligand.top"
+receptor="receptor/4gid.in"
+grid-size=[27.162,27.162,27.162]
+grid-center=[41.187,-4.086,12.263]
+# grid points: 1295029 (109 x 109 x 109), over DockThor's default limit 1000000
+grid-max-points=1295029

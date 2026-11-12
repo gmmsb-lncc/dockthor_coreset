@@ -1,0 +1,8 @@
+## DockThor qualification set: 1mq6
+
+output-dir="vcoreset_run"
+ligand="ligand/1mq6_ligand.top"
+receptor="receptor/1mq6.in"
+cofactors-path="cofactor/1mq6"
+grid-size=[22.233,22.233,22.233]
+grid-center=[7.54,4.9225,21.1325]

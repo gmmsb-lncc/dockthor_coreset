@@ -1,0 +1,10 @@
+## DockThor qualification set: 3nw9
+
+output-dir="vcoreset_run"
+ligand="ligand/3nw9_ligand.top"
+receptor="receptor/3nw9.in"
+cofactors-path="cofactor/3nw9"
+grid-size=[26.036,26.036,26.036]
+grid-center=[-2.7365,16.146,13.6875]
+# grid points: 1157625 (105 x 105 x 105), over DockThor's default limit 1000000
+grid-max-points=1157625

@@ -1,0 +1,7 @@
+## DockThor qualification set: 1loq
+
+output-dir="vcoreset_run"
+ligand="ligand/1loq_ligand.top"
+receptor="receptor/1loq.in"
+grid-size=[17.096,17.096,17.096]
+grid-center=[41.09,37.9435,37.0035]

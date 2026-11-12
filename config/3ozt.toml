@@ -1,0 +1,8 @@
+## DockThor qualification set: 3ozt
+
+output-dir="vcoreset_run"
+ligand="ligand/3ozt_ligand.top"
+receptor="receptor/3ozt.in"
+cofactors-path="cofactor/3ozt"
+grid-size=[22.37,22.37,22.37]
+grid-center=[36.117,-2.513,-9.509]

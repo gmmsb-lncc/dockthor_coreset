@@ -1,0 +1,7 @@
+## DockThor qualification set: 1vso
+
+output-dir="vcoreset_run"
+ligand="ligand/1vso_ligand.top"
+receptor="receptor/1vso.in"
+grid-size=[16.999,16.999,16.999]
+grid-center=[38.925,5.5465,6.4015]

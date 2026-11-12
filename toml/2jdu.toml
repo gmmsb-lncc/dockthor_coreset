@@ -1,9 +1,0 @@
-## DockThor qualification set: 2jdu
-
-output-dir="vcoreset_run"
-ligand="ligand/2jdu_ligand.top"
-receptor="receptor/2jdu.in"
-cofactors-path="cofactor/2jdu"
-grid-size=[12.195,12.195,12.195]
-grid-center=[-39.348,20.8775,12.6135]
-grid-rstep=0.25

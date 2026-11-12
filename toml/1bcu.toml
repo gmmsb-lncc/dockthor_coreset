@@ -1,8 +1,0 @@
-## DockThor qualification set: 1bcu
-
-output-dir="vcoreset_run"
-ligand="ligand/1bcu_ligand.top"
-receptor="receptor/1bcu.in"
-grid-size=[15.136,15.136,15.136]
-grid-center=[9.667,20.07,50.001]
-grid-rstep=0.25

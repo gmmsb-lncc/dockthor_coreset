@@ -1,0 +1,7 @@
+## DockThor qualification set: 1gpk
+
+output-dir="vcoreset_run"
+ligand="ligand/1gpk_ligand.top"
+receptor="receptor/1gpk.in"
+grid-size=[15.594,15.594,15.594]
+grid-center=[2.7305,66.578,63.046]

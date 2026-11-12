@@ -8,6 +8,7 @@ CMakeUserPresets.json
 Testing
 test*/
 !dockviz/tests/
+!scripts/tests/
 1bcu/
 .antigravity*/
 ################################

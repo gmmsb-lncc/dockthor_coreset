@@ -1,0 +1,8 @@
+## DockThor qualification set: 3utu
+
+output-dir="vcoreset_run"
+ligand="ligand/3utu_ligand.top"
+receptor="receptor/3utu.in"
+cofactors-path="cofactor/3utu"
+grid-size=[23.141,23.141,23.141]
+grid-center=[17.1875,-14.7595,23.4765]

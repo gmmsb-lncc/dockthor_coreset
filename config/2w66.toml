@@ -1,0 +1,8 @@
+## DockThor qualification set: 2w66
+
+output-dir="vcoreset_run"
+ligand="ligand/2w66_ligand.top"
+receptor="receptor/2w66.in"
+cofactors-path="cofactor/2w66"
+grid-size=[16.21,16.21,16.21]
+grid-center=[6.04,-11.3075,3.959]

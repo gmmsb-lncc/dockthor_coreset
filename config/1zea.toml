@@ -1,0 +1,9 @@
+## DockThor qualification set: 1zea
+
+output-dir="vcoreset_run"
+ligand="ligand/1zea_ligand.top"
+receptor="receptor/1zea.in"
+grid-size=[26.52,26.52,26.52]
+grid-center=[43.9265,54.0885,90.0]
+# grid points: 1225043 (107 x 107 x 107), over DockThor's default limit 1000000
+grid-max-points=1225043

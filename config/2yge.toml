@@ -1,0 +1,7 @@
+## DockThor qualification set: 2yge
+
+output-dir="vcoreset_run"
+ligand="ligand/2yge_ligand.top"
+receptor="receptor/2yge.in"
+grid-size=[19.28,19.28,19.28]
+grid-center=[21.512,-35.1235,-4.5545]

@@ -1,8 +1,0 @@
-## DockThor qualification set: 1w3k
-
-output-dir="vcoreset_run"
-ligand="ligand/1w3k_ligand.top"
-receptor="receptor/1w3k.in"
-grid-size=[14.74,14.74,14.74]
-grid-center=[60.564,45.902,36.526]
-grid-rstep=0.25

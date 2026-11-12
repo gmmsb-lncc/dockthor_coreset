@@ -1,0 +1,8 @@
+## DockThor qualification set: 2wca
+
+output-dir="vcoreset_run"
+ligand="ligand/2wca_ligand.top"
+receptor="receptor/2wca.in"
+cofactors-path="cofactor/2wca"
+grid-size=[21.503,21.503,21.503]
+grid-center=[-5.5435,-11.418,7.95]

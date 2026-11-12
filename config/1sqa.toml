@@ -1,0 +1,7 @@
+## DockThor qualification set: 1sqa
+
+output-dir="vcoreset_run"
+ligand="ligand/1sqa_ligand.top"
+receptor="receptor/1sqa.in"
+grid-size=[21.912,21.912,21.912]
+grid-center=[23.274,15.7205,33.9405]

@@ -1,0 +1,7 @@
+## DockThor qualification set: 3nox
+
+output-dir="vcoreset_run"
+ligand="ligand/3nox_ligand.top"
+receptor="receptor/3nox.in"
+grid-size=[19.716,19.716,19.716]
+grid-center=[50.916,50.2205,36.256]

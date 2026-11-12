@@ -1,0 +1,8 @@
+## DockThor qualification set: 3f80
+
+output-dir="vcoreset_run"
+ligand="ligand/3f80_ligand.top"
+receptor="receptor/3f80.in"
+cofactors-path="cofactor/3f80"
+grid-size=[14.861,14.861,14.861]
+grid-center=[23.2575,-14.9415,6.8595]

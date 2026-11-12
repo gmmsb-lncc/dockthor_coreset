@@ -1,0 +1,8 @@
+## DockThor qualification set: 3su3
+
+output-dir="vcoreset_run"
+ligand="ligand/3su3_ligand.top"
+receptor="receptor/3su3.in"
+cofactors-path="cofactor/3su3"
+grid-size=[24.161,24.161,24.161]
+grid-center=[-14.4865,-10.5635,15.5635]

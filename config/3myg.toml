@@ -1,0 +1,7 @@
+## DockThor qualification set: 3myg
+
+output-dir="vcoreset_run"
+ligand="ligand/3myg_ligand.top"
+receptor="receptor/3myg.in"
+grid-size=[20.733,20.733,20.733]
+grid-center=[-3.229,33.5855,79.9395]

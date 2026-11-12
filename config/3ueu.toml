@@ -1,0 +1,7 @@
+## DockThor qualification set: 3ueu
+
+output-dir="vcoreset_run"
+ligand="ligand/3ueu_ligand.top"
+receptor="receptor/3ueu.in"
+grid-size=[22.463,22.463,22.463]
+grid-center=[-2.3735,11.0695,18.069]

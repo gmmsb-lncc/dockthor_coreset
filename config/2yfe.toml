@@ -1,0 +1,7 @@
+## DockThor qualification set: 2yfe
+
+output-dir="vcoreset_run"
+ligand="ligand/2yfe_ligand.top"
+receptor="receptor/2yfe.in"
+grid-size=[20.215,20.215,20.215]
+grid-center=[16.386,22.6025,48.2215]

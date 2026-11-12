@@ -1,0 +1,8 @@
+## DockThor qualification set: 3gy4
+
+output-dir="vcoreset_run"
+ligand="ligand/3gy4_ligand.top"
+receptor="receptor/3gy4.in"
+cofactors-path="cofactor/3gy4"
+grid-size=[15.102,15.102,15.102]
+grid-center=[-1.824,14.5495,16.891]

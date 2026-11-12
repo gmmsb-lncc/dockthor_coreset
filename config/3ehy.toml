@@ -1,0 +1,8 @@
+## DockThor qualification set: 3ehy
+
+output-dir="vcoreset_run"
+ligand="ligand/3ehy_ligand.top"
+receptor="receptor/3ehy.in"
+cofactors-path="cofactor/3ehy"
+grid-size=[16.039,16.039,16.039]
+grid-center=[-2.3705,-4.416,-6.5845]

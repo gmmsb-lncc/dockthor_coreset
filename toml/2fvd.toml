@@ -1,8 +1,0 @@
-## DockThor qualification set: 2fvd
-
-output-dir="vcoreset_run"
-ligand="ligand/2fvd_ligand.top"
-receptor="receptor/2fvd.in"
-grid-size=[19.361,19.361,19.361]
-grid-center=[1.2305,28.0665,8.8495]
-grid-rstep=0.25

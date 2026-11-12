@@ -1,0 +1,7 @@
+## DockThor qualification set: 3bfu
+
+output-dir="vcoreset_run"
+ligand="ligand/3bfu_ligand.top"
+receptor="receptor/3bfu.in"
+grid-size=[15.683,15.683,15.683]
+grid-center=[-31.052,-5.6055,42.9975]

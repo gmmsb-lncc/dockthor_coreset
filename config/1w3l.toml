@@ -1,0 +1,7 @@
+## DockThor qualification set: 1w3l
+
+output-dir="vcoreset_run"
+ligand="ligand/1w3l_ligand.top"
+receptor="receptor/1w3l.in"
+grid-size=[20.842,20.842,20.842]
+grid-center=[59.794,47.962,37.128]
