@@ -1,0 +1,9 @@
+## DockThor qualification set: 3uri
+
+output-dir="vcoreset_run"
+ligand="ligand/3uri_ligand.top"
+receptor="receptor/3uri.in"
+grid-size=[27.365,27.365,27.365]
+grid-center=[1.76,31.4795,18.549]
+# grid points: 1331000 (110 x 110 x 110), over DockThor's default limit 1000000
+grid-max-points=1331000

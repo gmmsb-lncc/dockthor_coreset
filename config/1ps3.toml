@@ -1,0 +1,8 @@
+## DockThor qualification set: 1ps3
+
+output-dir="vcoreset_run"
+ligand="ligand/1ps3_ligand.top"
+receptor="receptor/1ps3.in"
+cofactors-path="cofactor/1ps3"
+grid-size=[14.656,14.656,14.656]
+grid-center=[30.7335,66.513,8.915]

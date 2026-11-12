@@ -1,0 +1,9 @@
+## DockThor qualification set: 2qmj
+
+output-dir="vcoreset_run"
+ligand="ligand/2qmj_ligand.top"
+receptor="receptor/2qmj.in"
+grid-size=[25.207,25.207,25.207]
+grid-center=[-21.626,-6.507,-5.4965]
+# grid points: 1030301 (101 x 101 x 101), over DockThor's default limit 1000000
+grid-max-points=1030301

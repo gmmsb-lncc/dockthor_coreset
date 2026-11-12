@@ -1,0 +1,8 @@
+## DockThor qualification set: 3cj2
+
+output-dir="vcoreset_run"
+ligand="ligand/3cj2_ligand.top"
+receptor="receptor/3cj2.in"
+cofactors-path="cofactor/3cj2"
+grid-size=[17.489,17.489,17.489]
+grid-center=[-24.0275,9.7015,-14.6135]

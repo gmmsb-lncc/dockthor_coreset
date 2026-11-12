@@ -1,0 +1,8 @@
+## DockThor qualification set: 3kwa
+
+output-dir="vcoreset_run"
+ligand="ligand/3kwa_ligand.top"
+receptor="receptor/3kwa.in"
+cofactors-path="cofactor/3kwa"
+grid-size=[15.457,15.457,15.457]
+grid-center=[-3.949,3.4605,15.537]

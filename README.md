@@ -85,8 +85,12 @@ grid-rstep=0.25
 ```
 dockthor_coreset/
 ├── README.md
+├── pyproject.toml             Black, Ruff and pytest settings of scripts/ (§4.5)
 ├── scripts/
 │   ├── qualification_set.py   generate and run the TOMLs, collect the success rates
+│   ├── grid_toml_generator.py            a TOML per ligand with a box fitted to the ligand (§4.4)
+│   ├── coreset/               the library of both scripts (§4.5)
+│   ├── tests/                 pytest tests of the scripts (§4.5)
 │   └── ci/                    dock.sh (one complex in the release image), badge.py (§7)
 ├── .github/workflows/         qualification.yml + dock-setup.yml: the release qualification (§7)
 ├── dockthor_results/          <version>/<setup>_qualification_summary.csv and _success_rate.txt; badges/ (§7)
@@ -104,7 +108,7 @@ Results are written inside the repository, one directory per setup (`steadystate
 
 ## 3. Quick start
 
-Requirements: Python 3.11+ (standard library only), git, and a DockThor build from [dockthor-suite](https://github.com/gmmsb-lncc/dockthor-suite) (its `README.md` explains the build; `build/bin/dockthor` for the CPU, `build_ocl/bin/dockthor` for OpenCL). The repository is public; DockThor Suite is private.
+Requirements: Python 3.11+ (standard library only; pytest for the tests, §4.5), git, and a DockThor build from [dockthor-suite](https://github.com/gmmsb-lncc/dockthor-suite) (its `README.md` explains the build; `build/bin/dockthor` for the CPU, `build_ocl/bin/dockthor` for OpenCL). The repository is public; DockThor Suite is private.
 
 ```fish
 git clone https://github.com/gmmsb-lncc/dockthor_coreset.git
@@ -284,6 +288,67 @@ The input paths in the TOMLs (`ligand/...`, `receptor/...`, `cofactor/...`) are 
 With `--config-dir` alone the script prints the root it inferred (`Dataset root (from the TOMLs): ...`) and stops if no such folder exists. Run the examples of this README from the repository root, or give `--config-dir` as an absolute path.
 
 The output directory (`-o` or the TOML's `output-dir`) is relative to the dataset root too: `-o steadystate` writes to `dockthor_coreset/steadystate/`.
+
+### 4.4 A box fitted to each ligand: `grid_toml_generator.py`
+
+`scripts/grid_toml_generator.py` writes a TOML for every ligand topology of a folder, with a docking box computed from the ligand itself instead of `config/*.txt`:
+
+- **Center:** the middle of the ligand's bounding box (all atoms, hydrogens included), so every atom is at least half the padding away from each face.
+- **Size:** the bounding box's extent on each axis plus `--padding` (default 8 Å, half on each side). With `--box-shape cube` (the default) every edge is the longest one; with `--box-shape ligand` each axis keeps its own. A ligand spanning 10 × 20 × 30 Å gives `[38,38,38]`, or `[18,28,38]` with `--box-shape ligand`.
+- **Grid step:** `grid-rstep` is written only when `--rstep` is given; without it the TOML has no `grid-rstep` and DockThor uses its default, 0.25 Å.
+- **Grid points:** counted as DockThor does (`dockthor/src/Grid.cpp`): per axis `int(size / rstep) + 1` in float32, the total their product, with `--rstep` or DockThor's default step. A grid over DockThor's default limit of 1,000,000 points gets `grid-max-points` with its count, under a comment, so DockThor runs it:
+
+  ```toml
+  # grid points: 1520875 (115 x 115 x 115), over DockThor's default limit 1000000
+  grid-max-points=1520875
+  ```
+
+- **Values:** float32, as DockThor reads them, each written as the shortest decimal that reads back as the same float32 (`21.274`, `6.1335`).
+
+The ligands are the files DockThor reads as one, MMFFLigand's outputs: `<name>.top`, and `<name>_mmff.cif` / `.mmcif` (also gzipped) with their `_mmffligand_atom` types. When a ligand is there in several formats the first of `.top`, `.cif`, `.mmcif`, `.cif.gz`, `.mmcif.gz` is used. Any other file (a `.mol2`, a wwPDB entry, the `_diedral.inf` notes) is reported on stderr as `Skipped unrecognized <file>`; MMFFLigand's deprecated copies (`new_*`, `*_new.*`) are ignored.
+
+Each `<complex>.toml` (the ligand name without `_ligand`: `10gs_ligand.top` → `10gs.toml`) has the layout of `toml/` (§1.4): `output-dir` (`--run-dir`, default `vcoreset_run`), `ligand` (the file used), `receptor` (`<--receptor-path>/<complex>.in`), `cofactors-path` when `<--cofactor-path>/<complex>/` holds `.top` files, `grid-size`, `grid-center`, and `grid-rstep` only with `--rstep`. Paths are relative to the dataset root, so the TOMLs run with `qualification_set.py --config-dir` (§4.1). An existing TOML is kept unless `--overwrite`; a complex without a receptor gets no TOML and an error (exit status 1).
+
+```fish
+python3 scripts/grid_toml_generator.py                                   # ligand/ of the set in ., TOMLs in config/
+python3 scripts/grid_toml_generator.py --padding 10 --box-shape ligand --systems 1bcu 10gs --output-dir toml_fit --overwrite
+python3 scripts/qualification_set.py --config-dir config -o fitted --dockthor-path $DOCKTHOR/build/bin/dockthor
+```
+
+| Option | Default | Meaning |
+|--------|---------|---------|
+| `dataset` | `.` | Set root; the relative paths below are relative to it, and the TOMLs' paths are written relative to it |
+| `--ligand-path` | `ligand` | Folder of the ligand topologies |
+| `--receptor-path` | `receptor` | Folder of the receptors, `<complex>.in` |
+| `--cofactor-path` | `cofactor` | Folder of the cofactors, `<complex>/*.top` |
+| `--output-dir` | `config` | Where the TOMLs are written |
+| `--run-dir` | `vcoreset_run` | The `output-dir` key of the TOMLs |
+| `--padding` | `8.0` | Å added to each edge of the bounding box, half on each side |
+| `--box-shape` | `cube` | `cube`: every edge the longest one; `ligand`: each axis its own |
+| `--rstep` | not written | Grid step (Å), written as `grid-rstep`; without it DockThor's default 0.25 Å, also used to count the points |
+| `--systems` | all | Only these complexes |
+| `--overwrite` | off | Overwrite existing TOMLs |
+
+The standard output is one line per complex (bounding box, grid size, grid points, and a warning when the grid is over the limit) and a summary with the smallest, median and largest grid. On this set with the defaults the boxes are 2 Å larger than those of `toml/` (padding 8 instead of 6 Å, the same centers) and 13 complexes are over the limit, up to 1,520,875 points (`3ag9`).
+
+### 4.5 The scripts' code
+
+The two scripts are command lines over the package `scripts/coreset/` (standard library only, Python 3.12, the version of the DockThor image the release workflow runs them in):
+
+| Module | Holds |
+|--------|-------|
+| `tomlfile.py` | TOML literals, `--set`, the `<pdb>.toml` layout |
+| `dataset.py` | The set on disk: systems, `config/*.txt`, cofactors, cloning with `--git-url` |
+| `molecules.py` | The ligand topologies DockThor reads and their coordinates |
+| `gridbox.py` | The box around a ligand and DockThor's grid-point count, in float32 |
+| `docking.py` | Running DockThor on the TOMLs, the logs |
+| `summary.py` | `qualification_summary.csv`, `success_rate.txt`, `--collect`, `--generate-summary` |
+
+The tests (`scripts/tests/`, pytest) cover the box and the grid-point count, the ligand readers and the files they skip, the TOML layout, and both command lines on a small set. Before a change:
+
+```fish
+black scripts; ruff check scripts; python3 -m pytest
+```
 
 ---
 

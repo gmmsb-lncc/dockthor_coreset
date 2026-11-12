@@ -1,8 +1,0 @@
-## DockThor qualification set: 2zjw
-
-output-dir="vcoreset_run"
-ligand="ligand/2zjw_ligand.top"
-receptor="receptor/2zjw.in"
-grid-size=[15.6488,15.6488,15.6488]
-grid-center=[36.9515,-4.5544,9.7155]
-grid-rstep=0.25

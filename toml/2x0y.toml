@@ -1,8 +1,0 @@
-## DockThor qualification set: 2x0y
-
-output-dir="vcoreset_run"
-ligand="ligand/2x0y_ligand.top"
-receptor="receptor/2x0y.in"
-grid-size=[16.111,16.111,16.111]
-grid-center=[32.6595,44.266,22.599]
-grid-rstep=0.25

@@ -1,0 +1,7 @@
+## DockThor qualification set: 4djr
+
+output-dir="vcoreset_run"
+ligand="ligand/4djr_ligand.top"
+receptor="receptor/4djr.in"
+grid-size=[22.052,22.052,22.052]
+grid-center=[19.277,30.419,13.758]

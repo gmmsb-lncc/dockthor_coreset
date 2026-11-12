@@ -1,0 +1,8 @@
+## DockThor qualification set: 2zcr
+
+output-dir="vcoreset_run"
+ligand="ligand/2zcr_ligand.top"
+receptor="receptor/2zcr.in"
+cofactors-path="cofactor/2zcr"
+grid-size=[24.71,24.71,24.71]
+grid-center=[16.891,55.7845,37.042]

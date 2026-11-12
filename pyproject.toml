@@ -1,0 +1,26 @@
+# Python formatting (Black), linting (Ruff) and tests (pytest) of scripts/, with the settings of the DockThor Suite.
+# This file only configures the tools; the scripts are run as files (python3 scripts/<script>.py), not installed.
+#
+#   black scripts            # format (check: black --check --diff scripts)
+#   ruff check --fix scripts # lint
+#   python3 -m pytest        # the tests of scripts/tests/
+#
+# Python 3.12: the version of the DockThor image the qualification workflow runs the scripts in.
+
+[tool.black]
+line-length = 120
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+# pycodestyle errors and warnings, Pyflakes, isort, flake8-bugbear, pyupgrade.
+select = ["E", "W", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["coreset", "grid_toml_generator", "qualification_set", "test_molecules"]
+
+[tool.pytest.ini_options]
+testpaths = ["scripts/tests"]

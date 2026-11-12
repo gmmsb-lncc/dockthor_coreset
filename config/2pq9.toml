@@ -1,0 +1,7 @@
+## DockThor qualification set: 2pq9
+
+output-dir="vcoreset_run"
+ligand="ligand/2pq9_ligand.top"
+receptor="receptor/2pq9.in"
+grid-size=[17.121,17.121,17.121]
+grid-center=[57.7505,10.425,28.9895]

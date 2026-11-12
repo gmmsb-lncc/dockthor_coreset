@@ -1,0 +1,8 @@
+## DockThor qualification set: 2xy9
+
+output-dir="vcoreset_run"
+ligand="ligand/2xy9_ligand.top"
+receptor="receptor/2xy9.in"
+cofactors-path="cofactor/2xy9"
+grid-size=[24.6,24.6,24.6]
+grid-center=[14.523,-2.646,-22.6775]

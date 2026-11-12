@@ -1,0 +1,7 @@
+## DockThor qualification set: 2xdl
+
+output-dir="vcoreset_run"
+ligand="ligand/2xdl_ligand.top"
+receptor="receptor/2xdl.in"
+grid-size=[15.881,15.881,15.881]
+grid-center=[65.9445,35.786,25.0995]

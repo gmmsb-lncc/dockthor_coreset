@@ -1,9 +1,0 @@
-## DockThor qualification set: 3vh9
-
-output-dir="vcoreset_run"
-ligand="ligand/3vh9_ligand.top"
-receptor="receptor/3vh9.in"
-cofactors-path="cofactor/3vh9"
-grid-size=[12.284,12.284,12.284]
-grid-center=[18.429,-28.2595,-8.3965]
-grid-rstep=0.25

@@ -1,0 +1,7 @@
+## DockThor qualification set: 1hnn
+
+output-dir="vcoreset_run"
+ligand="ligand/1hnn_ligand.top"
+receptor="receptor/1hnn.in"
+grid-size=[16.418,16.418,16.418]
+grid-center=[28.2705,44.2875,16.852]

@@ -1,0 +1,9 @@
+## DockThor qualification set: 3uex
+
+output-dir="vcoreset_run"
+ligand="ligand/3uex_ligand.top"
+receptor="receptor/3uex.in"
+grid-size=[25.769,25.769,25.769]
+grid-center=[-2.492,10.5845,17.5525]
+# grid points: 1124864 (104 x 104 x 104), over DockThor's default limit 1000000
+grid-max-points=1124864

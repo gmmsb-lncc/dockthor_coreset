@@ -1,0 +1,8 @@
+## DockThor qualification set: 1f8d
+
+output-dir="vcoreset_run"
+ligand="ligand/1f8d_ligand.top"
+receptor="receptor/1f8d.in"
+cofactors-path="cofactor/1f8d"
+grid-size=[16.805,16.805,16.805]
+grid-center=[26.7575,17.448,62.4245]

@@ -1,8 +1,0 @@
-## DockThor qualification set: 2xb8
-
-output-dir="vcoreset_run"
-ligand="ligand/2xb8_ligand.top"
-receptor="receptor/2xb8.in"
-grid-size=[16.981,16.981,16.981]
-grid-center=[15.6445,2.543,39.029]
-grid-rstep=0.25

@@ -1,0 +1,8 @@
+## DockThor qualification set: 1r5y
+
+output-dir="vcoreset_run"
+ligand="ligand/1r5y_ligand.top"
+receptor="receptor/1r5y.in"
+cofactors-path="cofactor/1r5y"
+grid-size=[16.149,16.149,16.149]
+grid-center=[16.956,16.7965,21.3465]

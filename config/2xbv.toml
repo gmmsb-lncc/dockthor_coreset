@@ -1,0 +1,8 @@
+## DockThor qualification set: 2xbv
+
+output-dir="vcoreset_run"
+ligand="ligand/2xbv_ligand.top"
+receptor="receptor/2xbv.in"
+cofactors-path="cofactor/2xbv"
+grid-size=[24.743,24.743,24.743]
+grid-center=[10.685,63.7375,4.745]

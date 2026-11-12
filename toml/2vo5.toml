@@ -1,8 +1,0 @@
-## DockThor qualification set: 2vo5
-
-output-dir="vcoreset_run"
-ligand="ligand/2vo5_ligand.top"
-receptor="receptor/2vo5.in"
-grid-size=[14.323,14.323,14.323]
-grid-center=[29.5175,47.234,-2.7595]
-grid-rstep=0.25

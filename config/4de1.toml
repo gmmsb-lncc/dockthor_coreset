@@ -1,0 +1,7 @@
+## DockThor qualification set: 4de1
+
+output-dir="vcoreset_run"
+ligand="ligand/4de1_ligand.top"
+receptor="receptor/4de1.in"
+grid-size=[19.916,19.916,19.916]
+grid-center=[-7.087,55.8135,11.984]

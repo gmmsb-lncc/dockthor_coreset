@@ -1,0 +1,7 @@
+## DockThor qualification set: 3l4u
+
+output-dir="vcoreset_run"
+ligand="ligand/3l4u_ligand.top"
+receptor="receptor/3l4u.in"
+grid-size=[20.348,20.348,20.348]
+grid-center=[-1.4415,-19.753,-21.178]

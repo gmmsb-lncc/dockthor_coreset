@@ -1,8 +1,0 @@
-## DockThor qualification set: 3f3a
-
-output-dir="vcoreset_run"
-ligand="ligand/3f3a_ligand.top"
-receptor="receptor/3f3a.in"
-grid-size=[12.949,12.949,12.949]
-grid-center=[-27.7595,-4.0255,-21.0705]
-grid-rstep=0.25

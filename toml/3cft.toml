@@ -1,8 +1,0 @@
-## DockThor qualification set: 3cft
-
-output-dir="vcoreset_run"
-ligand="ligand/3cft_ligand.top"
-receptor="receptor/3cft.in"
-grid-size=[13.831,13.831,13.831]
-grid-center=[-21.5955,-0.0265,-25.5885]
-grid-rstep=0.25

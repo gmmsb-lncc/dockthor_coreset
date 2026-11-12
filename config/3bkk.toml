@@ -1,0 +1,8 @@
+## DockThor qualification set: 3bkk
+
+output-dir="vcoreset_run"
+ligand="ligand/3bkk_ligand.top"
+receptor="receptor/3bkk.in"
+cofactors-path="cofactor/3bkk"
+grid-size=[22.407,22.407,22.407]
+grid-center=[45.8825,44.188,45.6175]

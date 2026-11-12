@@ -1,0 +1,7 @@
+## DockThor qualification set: 2cet
+
+output-dir="vcoreset_run"
+ligand="ligand/2cet_ligand.top"
+receptor="receptor/2cet.in"
+grid-size=[17.68,17.68,17.68]
+grid-center=[-0.9745,8.477,10.2805]
