@@ -9,7 +9,7 @@ Testing
 test*/
 !dockviz/tests/
 !scripts/tests/
-1bcu/
+/1bcu/
 .antigravity*/
 ################################
 ########### FOLDERS ############
@@ -63,6 +63,8 @@ dockthor_1*
 *.su
 *.idb
 *.pdb
+# ... except the cofactor records of a qualification set (<set>/<complex>/cofactors/*.pdb, README 1.4)
+!*-coreset/*/cofactors/*.pdb
 
 ################################
 ########### VS CODE ############
@@ -179,3 +181,6 @@ __pycache__/
 ci_out/
 ci_collect/
 ci_artifacts/
+# The TOMLs of a qualification set are generated from its ligands in well under a second
+# (scripts/grid_toml_generator.py, README 4.4), so they are not committed.
+*-coreset/config/

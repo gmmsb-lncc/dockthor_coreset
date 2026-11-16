@@ -9,7 +9,6 @@ import time
 import tomllib
 from pathlib import Path
 
-from coreset.dataset import discover_systems
 from coreset.summary import read_success_rate, success_rate_cutoffs, write_success_rate_txt, write_summary
 
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
@@ -55,12 +54,10 @@ def summary_path_of(args, out_dirs: list[Path], toml_dir: Path) -> Path:
 
 
 def run_systems(args) -> list[str]:
-    """--systems, else every <pdb>.toml of --config-dir, else every system of config/."""
-    if args.systems:
-        return args.systems
-    if args.run_toml_dir is not None:
-        return sorted(p.stem for p in args.run_toml_dir.glob("*.toml"))
-    return discover_systems(args.dataset)
+    """--complex, else every <pdb>.toml of the TOML folder."""
+    if args.complex:
+        return args.complex
+    return sorted(p.stem for p in args.run_toml_dir.glob("*.toml"))
 
 
 def dockthor_command_args(args) -> tuple[list[str], list[str], Path | None]:
@@ -86,7 +83,7 @@ def run(args, systems: list[str]) -> int:
         return 1
     launcher, dockthor_args, output_dir = dockthor_command_args(args)
 
-    toml_dir = args.run_toml_dir or args.toml_dir
+    toml_dir = args.run_toml_dir
     tomls = [toml_dir / f"{pdb}.toml" for pdb in systems]
     missing = [t.name for t in tomls if not t.is_file()]
     if missing:

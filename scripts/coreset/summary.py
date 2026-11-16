@@ -1,5 +1,5 @@
 """The success-rate reports: DockThor's <ligand>_docked_success_rate.csv, their consolidation qualification_summary.csv,
-and success_rate.txt; the --generate-summary and --collect commands."""
+and success_rate.txt; the two modes of scripts/summarize_results.py (DIR and --from-summary)."""
 
 import csv
 import re
@@ -113,7 +113,8 @@ def write_success_rate_txt(path: Path, reports: list[dict], cutoffs: list[float]
 
 
 def generate_summary(summary_csv: Path, rmsd_cutoff: float) -> int:
-    """--generate-summary: success_rate.txt, in the current directory, from an existing summary CSV."""
+    """summarize_results.py --from-summary: success_rate.txt, in the current directory, from an existing summary
+    CSV."""
     summary_path = summary_csv.expanduser().resolve()
     try:
         reports = read_summary(summary_path)
@@ -151,12 +152,13 @@ def collect_reports(root: Path) -> tuple[list[dict], set[str]]:
 
 
 def collect(directory: Path, config_dir: Path | None, summary_csv: Path | None, rmsd_cutoff: float) -> int:
-    """--collect DIR: qualification_summary.csv and success_rate.txt from every <ligand>_docked_success_rate.csv
-    under DIR (flat, or in <pdb>/ folders), e.g. the per-complex reports of parallel runs gathered into one folder.
-    With config_dir, the complexes are counted against its TOMLs and the missing ones are listed."""
+    """summarize_results.py DIR: qualification_summary.csv and success_rate.txt from every
+    <ligand>_docked_success_rate.csv under DIR (flat, or in <pdb>/ folders), e.g. the per-complex reports of parallel
+    runs gathered into one folder. With config_dir, the complexes are counted against its TOMLs and the missing ones
+    are listed."""
     root = directory.expanduser().resolve()
     if not root.is_dir():
-        print(f"[error] --collect {root} is not a directory", file=sys.stderr)
+        print(f"[error] {root} is not a directory", file=sys.stderr)
         return 1
 
     reports, seen = collect_reports(root)

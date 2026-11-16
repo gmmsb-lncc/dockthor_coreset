@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import qualification_set as qs  # noqa: E402  (scripts/qualification_set.py)
+from coreset.summary import read_summary  # noqa: E402
 
 # (lowest rate in %, shields.io color), first match wins
 COLORS = [(90.0, "brightgreen"), (80.0, "green"), (70.0, "yellowgreen"), (60.0, "yellow"), (50.0, "orange")]
@@ -47,7 +47,7 @@ def main(argv=None) -> int:
     )
     args = parser.parse_args(argv)
 
-    reports = qs.read_summary(args.summary)
+    reports = read_summary(args.summary)
     for name, column in METRICS.items():
         values = [float(r[column]) for r in reports if r.get(column)]
         if not values:
