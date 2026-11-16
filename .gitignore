@@ -18,6 +18,8 @@ build*/
 html/
 #Any dockthor run without output-dir
 dockthor_1*
+# A run's output directory (-o/--output-dir): results are untracked (README 2.1)
+*_run/
 ################################
 ############ C/C++ #############
 ################################
@@ -63,8 +65,10 @@ dockthor_1*
 *.su
 *.idb
 *.pdb
-# ... except the cofactor records of a qualification set (<set>/<complex>/cofactors/*.pdb, README 1.4)
+# ... except the records of a qualification set: the cofactors and the charged receptor DockTScore reads
+# (<set>/<complex>/cofactors/*.pdb and <complex>/receptors/prep/*_prep.pdb, README 1.4)
 !*-coreset/*/cofactors/*.pdb
+!*-coreset/*/receptors/prep/*.pdb
 
 ################################
 ########### VS CODE ############

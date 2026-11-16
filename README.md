@@ -42,6 +42,7 @@ This is what makes the success rate mean what it says: DockThor measures RMSD ag
 |---|---|---|
 | Complexes | 195 | Named by PDB ID (`10gs`, `1a30`, ... `4tmn`) |
 | Receptors | 195 | DockThor receptor topology (`.in`, the PDBThorBox format) |
+| Charged PDBs | 195 | The same receptors as the PDB DockTScore reads, derived from the `.in` (`receptors/prep/`, §1.8) |
 | Ligands | 195 | DockThor ligand topology (`.top`, MMFF94S, the MMFFLigand format); 15 to 140 atoms, median 42 |
 | Complexes with cofactors | 70 | 239 cofactor topologies, **every one a single metal ion**; 1 to 23 per complex (§1.6). No water, no coenzyme |
 | Affinities | 195 | One CSV row per complex: `-logKd/Ki`, ΔG, the published constant, the cluster (`index/affinity.csv`, §1.7) |
@@ -56,6 +57,7 @@ directory:
 | File | Contents |
 |------|----------|
 | `<pdb>/receptors/<pdb>.in` | Receptor topology: one line per atom with index, type, coordinates, bonded neighbors, charge, atom/residue name, chain |
+| `<pdb>/receptors/prep/<pdb>_prep.pdb` | The same receptor as the **charged PDB** DockTScore reads (`-p`): occupancy = partial charge, temperature factor = MMFF94S atom type. Written from the `.in` beside it, so the receptor DockTScore scores is the one DockThor docks into (§1.8) |
 | `<pdb>/ligands/<pdb>_ligand.top` | Ligand topology in the **crystal pose**: `$TOTAL_ATOMS` (element, index, MMFF type, charge, x y z, atomic number per atom), `$CON` (bonds), `$SELECTED_TORSIONS` (rotatable bonds) and `$NONBONDED_INTERACTIONS` |
 | `<pdb>/cofactors/<pdb>_cofactor-NN.top` | Optional (70 complexes): one topology per cofactor, numbered from `-00`, each holding one metal ion — `$TOTAL_ATOMS 1` in the ligand format — with the matching one-record `.pdb` (§1.6) |
 | `config/<pdb>.toml` | DockThor configuration of the complex: its inputs and its docking box. **Generated** by `grid_toml_generator.py`, not committed (§1.5) |
@@ -64,7 +66,9 @@ directory:
 ```text
 v2013-coreset/3ehy/
 ├── receptors/
-│   └── 3ehy.in
+│   ├── 3ehy.in
+│   └── prep/
+│       └── 3ehy_prep.pdb
 ├── ligands/
 │   └── 3ehy_ligand.top
 └── cofactors/
@@ -195,6 +199,37 @@ It is what the correlations need, and the set carries nothing for them that it c
 
 ---
 
+### 1.8 The charged PDB: the receptor DockTScore reads
+
+DockThor docks into the `.in` topology; **DockTScore refuses it** and takes its receptor only as a PDB whose
+occupancy column is the partial charge and whose temperature factor is the MMFF94S atom type (the DockTScore
+manual §11). PDBThorBox writes that file beside the topology, but the two have to stay together: a receptor
+prepared again today is not the one prepared in 2019 (the hydrogens move and the atom count changes), so a charged
+PDB taken from a fresh preparation would make DockTScore score a *different* receptor than the one docked.
+
+The set therefore keeps the charged PDB **derived from the committed `.in` itself** (`scripts/coreset/charged_pdb.py`),
+which carries everything a record needs:
+
+```text
+    1504   32  -18.92100   13.93800  -12.22700   1502  0 0 0 0 0  -0.900  OXT TER X 158    1
+    index  type  x           y          z        <- bonded ->     charge  name res chain number
+```
+
+```text
+ATOM   1504  OXT TER X 158     -18.921  13.938 -12.227 -0.90 32.00           O
+                                                       ^^^^^ ^^^^^ occupancy = charge, B-factor = MMFF type
+```
+
+The conversion reproduces PDBThorBox's own `_prep.pdb` byte for byte for 162 of the 189 receptors it can prepare;
+in the other 27 a coordinate differs by 0.001 Å in 45 records out of 1.1 million, because the `.in` keeps five
+decimals and a PDB three, and PDBThorBox rounds from its own internal values. **Charges and atom types always
+match exactly.** Deriving from the `.in` also covers the six receptors PDBThorBox cannot rebuild (§4.5).
+
+The 195 files are committed (87 MB in all) so a clone can rescore without the CASF download; the rescoring step
+writes a missing one on the fly, and `qualify_coreset.py` writes it whenever it installs a receptor.
+
+---
+
 ## 2. Repository layout
 
 ```
@@ -204,7 +239,8 @@ dockthor_coreset/
 ├── scripts/
 │   ├── grid_toml_generator.py a TOML per complex with a box fitted to its ligand (§4.4)
 │   ├── qualification_set.py   dock the TOMLs and report the success rates (§4)
-│   ├── summarize_results.py   merge reports docked elsewhere, without docking (§4.1 E)
+│   ├── summarize_results.py   merge reports docked elsewhere, without docking (§4.1 F)
+│   ├── rescore_results.py     rescore a finished run with DockTScore (§4.8)
 │   ├── qualify_coreset.py     build the whole set from CASF-2013 and dock it (§4.5)
 │   ├── coreset/               the library of the scripts (§4.6)
 │   ├── tests/                 pytest tests of the scripts (§4.6)
@@ -213,7 +249,7 @@ dockthor_coreset/
 ├── dockthor_results/          <version>/<setup>_qualification_summary.csv and _success_rate.txt; badges/ (§7)
 └── v2013-coreset/             one qualification set (§2.1)
     ├── <pdb>/                 one directory per complex (§1.4), 195 of them:
-    │   ├── receptors/         <pdb>.in
+    │   ├── receptors/         <pdb>.in and prep/<pdb>_prep.pdb, the charged PDB (§1.8)
     │   ├── ligands/           <pdb>_ligand.top, the crystal pose
     │   └── cofactors/         <pdb>_cofactor-NN.{top,pdb}   (70 complexes)
     ├── index/                 affinity.csv: affinities and clusters, + CASF's .lst (§1.7)
@@ -277,6 +313,14 @@ Success rates: /home/user/dockthor_coreset/steadystate/success_rate.txt
 
 `steadystate/qualification_summary.csv` then holds the top-N report of every complex (§5.3), and `steadystate/success_rate.txt` the success rate of the whole set for every topK and RMSD cutoff (§5.4). If the run stops, the same command resumes it: `--skip-done` skips the finished complexes.
 
+**With the scoring too.** Adding `--docktscore-path` rescores the best-scored pose of every complex with DockTScore right after it docks, puts the score and the measured affinity in the summary, and writes `steadystate/scoring_power.txt` (§4.7, §5.5):
+
+```fish
+python3 scripts/qualification_set.py --config-dir v2013-coreset/config -o steadystate \
+    --dockthor-path $DOCKTHOR/build/bin/dockthor --docktscore-path $DOCKTHOR/build/bin/docktscore \
+    --mpi --np 24 --dockthor-args='--ga-nrun 24'
+```
+
 ---
 
 ## 4. The qualification scripts
@@ -286,7 +330,7 @@ Three scripts, one per step, in this order:
 1. **Generate** the TOMLs: `scripts/grid_toml_generator.py <set>` writes `config/<pdb>.toml` (§4.4).
 2. **Dock** them: `scripts/qualification_set.py` runs DockThor on every TOML, saves each complex's console output, and
    after every complex rewrites the summary and the success rates (§5).
-3. **Merge** reports docked elsewhere, only when the docking was split up: `scripts/summarize_results.py` (§4.1 E).
+3. **Merge** reports docked elsewhere, only when the docking was split up: `scripts/summarize_results.py` (§4.1 F).
 
 The docking setup (evolution type, number of runs, ...) is never written into the TOMLs: it is given at run time with
 `--dockthor-args`, so the same TOMLs serve every setup. The dataset can be this repository, any directory with the same
@@ -308,7 +352,15 @@ python3 scripts/qualification_set.py --config-dir v2013-coreset/config --complex
     --dockthor-path $DOCKTHOR/build/bin/dockthor --mpi --np 4 --dockthor-args='--ga-nrun 4 --success-rate --success-rate-by-run 2'
 ```
 
-**C. Straight from GitHub.** `--git-url` clones the set (into `./dockthor_coreset` by default; an existing clone there is reused) and runs any of the above on the clone; `--git-ref` pins a branch, tag or commit:
+**C. Dock and rescore in one command.** `--docktscore-path` runs DockTScore on the best-scored pose of every
+complex right after it docks, puts the score in the summary and reports the scoring power (§4.7):
+
+```fish
+python3 scripts/qualification_set.py v2013-coreset -o scored --dockthor-path $DOCKTHOR/build/bin/dockthor \
+    --docktscore-path $DOCKTHOR/build/bin/docktscore --mpi --np 24 --dockthor-args='--ga-nrun 24'
+```
+
+**D. Straight from GitHub.** `--git-url` clones the set (into `./dockthor_coreset` by default; an existing clone there is reused) and runs any of the above on the clone; `--git-ref` pins a branch, tag or commit:
 
 ```fish
 python3 dockthor_coreset/scripts/qualification_set.py --git-url git@github.com:gmmsb-lncc/dockthor_coreset.git \
@@ -319,7 +371,7 @@ python3 dockthor_coreset/scripts/qualification_set.py --git-url git@github.com:g
 
 The script prints the checked-out commit (`Dataset commit: <sha>`), which ties the results to an exact version of the set.
 
-**D. Another set.** Any set directory (§2.1) — one `<pdb>/` per complex with `receptors/`, `ligands/` and optionally `cofactors/`, laid out as in §1.4 — works; generate its TOMLs, then pass it as the first argument (its `config/` is used):
+**E. Another set.** Any set directory (§2.1) — one `<pdb>/` per complex with `receptors/`, `ligands/` and optionally `cofactors/`, laid out as in §1.4 — works; generate its TOMLs, then pass it as the first argument (its `config/` is used):
 
 ```fish
 python3 scripts/grid_toml_generator.py ~/my_set
@@ -327,7 +379,7 @@ python3 scripts/qualification_set.py ~/my_set -o results --dockthor-path $DOCKTH
     --dockthor-args='--ga-nrun 10'
 ```
 
-**E. Merge reports docked elsewhere.** `scripts/summarize_results.py DIR` builds `qualification_summary.csv` and `success_rate.txt` in one shot from every `<ligand>_docked_success_rate.csv` under `DIR`, flat or in `<pdb>/` folders: the reports of parallel jobs (the release qualification, §7), of several machines, or of a set split by `--complex`. It docks nothing. `--config-dir` counts the complexes against its TOMLs and lists the missing ones, `--summary-csv FILE` writes the summary elsewhere (`success_rate.txt` beside it), and `--rmsd-cutoff` is as below; `--from-summary CSV` instead rebuilds only `success_rate.txt` from an existing summary (§5.4):
+**F. Merge reports docked elsewhere.** `scripts/summarize_results.py DIR` builds `qualification_summary.csv` and `success_rate.txt` in one shot from every `<ligand>_docked_success_rate.csv` under `DIR`, flat or in `<pdb>/` folders: the reports of parallel jobs (the release qualification, §7), of several machines, or of a set split by `--complex`. It docks nothing. `--config-dir` counts the complexes against its TOMLs and lists the missing ones, `--summary-csv FILE` writes the summary elsewhere (`success_rate.txt` beside it), and `--rmsd-cutoff` is as below; `--from-summary CSV` instead rebuilds only `success_rate.txt` from an existing summary (§5.4):
 
 ```fish
 python3 scripts/summarize_results.py gathered_reports --config-dir v2013-coreset/config
@@ -481,7 +533,7 @@ Three stages, all run by default, in this order. Each tool has a `--skip-<tool>`
 | Stage | What runs | Skipped with | Writes into the set |
 |-------|-----------|--------------|---------------------|
 | `prepare` | MMFFLigand on `<pdb>_ligand.mol2` and on each metal ion | `--skip-mmffligand` | `<pdb>/ligands/<pdb>_ligand.top`, `<pdb>/cofactors/` (`.top` and `.pdb`) |
-| | PDBThorBox on the protein records | `--skip-pdbthorbox` | `<pdb>/receptors/<pdb>.in` |
+| | PDBThorBox on the protein records | `--skip-pdbthorbox` | `<pdb>/receptors/<pdb>.in`, and `<pdb>/receptors/prep/<pdb>_prep.pdb` written from it (§1.8) |
 | | (both) | both options | `index/affinity.csv`, written once (§1.7) |
 | `config` | `grid_toml_generator.py` (§4.4) | `--skip-config` | `config/<pdb>.toml` |
 | `dock` | DockThor through `qualification_set.py` (§4.1 A); `--dockthor-path`, default `<--suite-bin>/dockthor` | `--skip-dockthor` | `<--dock-output>/`, `qualification_summary.csv`, `success_rate.txt` |
@@ -508,7 +560,7 @@ Six complexes of the core set are numbered to 1023-1045 and cannot be prepared b
 
 ### 4.6 The scripts' code
 
-The four scripts are command lines over the package `scripts/coreset/` (standard library only, Python 3.12, the version of the DockThor image the release workflow runs them in):
+The five scripts are command lines over the package `scripts/coreset/` (standard library only, Python 3.12, the version of the DockThor image the release workflow runs them in):
 
 | Module | Holds |
 |--------|-------|
@@ -518,6 +570,9 @@ The four scripts are command lines over the package `scripts/coreset/` (standard
 | `gridbox.py` | The box around a ligand and DockThor's grid-point count, in float32 |
 | `docking.py` | Running DockThor on the TOMLs, the logs |
 | `summary.py` | `qualification_summary.csv`, `success_rate.txt`, the two modes of `summarize_results.py` |
+| `charged_pdb.py` | The charged PDB DockTScore reads, written from a receptor `.in` (§1.8) |
+| `scoring.py` | Rescoring the best-scored pose of a complex with every DockTScore model (§4.7) |
+| `statistics.py` | Pearson, Spearman, the least-squares fit and the two RMSE of `scoring_power.txt` (§5.5) |
 | `prepare.py` | Building the set from CASF-2013: the protein split, the facility calls (§4.5) |
 | `affinity.py` | Converts CASF's `.lst` into `index/affinity.csv` (affinities, ΔG, clusters), checking every row (§1.7) |
 
@@ -526,6 +581,70 @@ The tests (`scripts/tests/`, pytest) cover the box and the grid-point count, the
 ```fish
 black scripts; ruff check scripts; python3 -m pytest
 ```
+
+### 4.7 Rescoring with DockTScore: `--docktscore-path`
+
+DockThor ranks its poses with its own energy, which is not comparable between complexes (a complex with five metal
+ions sits tens of kcal/mol below one without). **DockTScore** is the suite's scoring function, and its value is what
+a set's *scoring power* is measured with. Given `--docktscore-path`, `qualification_set.py` rescores every complex
+in the same run, right after it docks:
+
+1. The **best-scored pose** — the first of `<pdb>_ligand_docked.mol2`, which is the pose CASF's scoring power uses —
+   is split out as `<pdb>_top1.mol2`.
+2. DockTScore scores it against the charged PDB of the receptor (§1.8) and the complex's `cofactors/*.pdb`
+   (it reads a cofactor only as PDB or MOL2, never as a `.top`), with `--report-format csv`.
+3. It is scored **once per model** of `--docktscore-models` (`general_dock`, `general2764`, `protease` and `ppi` by
+   default). DockTScore names its output after the ligand, so each model scores its own copy of the pose:
+   `<pdb>_top1_<model>.mol2` gives `<pdb>_top1_<model>.score` and `<pdb>_top1_<model>_score.csv`.
+4. Each `DockTScore` value goes into the summary as a `docktscore_<model>` column, at the full precision of the CSV,
+   beside the measured affinity of the complex read from `index/affinity.csv`. The same values are written as one
+   row in `<pdb>_scores.csv`, which is what a parallel job hands back (§7.2).
+5. `scoring_power.txt` and `scoring_power.csv` are rewritten beside `success_rate.txt` (§5.5).
+
+```fish
+python3 scripts/qualification_set.py v2013-coreset --complex 1bcu 3ehy 10gs -o scored \
+    --dockthor-path $DOCKTHOR/build/bin/dockthor --docktscore-path $DOCKTHOR/build/bin/docktscore
+```
+
+`--docktscore-models` picks the coefficients, in the order they are reported: `general_dock` (fitted for docking
+poses), `general2764` (the general set of 2764 complexes), `protease` and `ppi` by default, and `general` and
+`kinase` are the other bundled models. Each one scores a pose in about 0.1 s — MSMS runs on the fly and is not the
+bottleneck — so the four default models add about 80 s to a 195-complex run. `--docktscore-args` passes anything
+else through.
+
+A model fitted on another scale (`protease`, `ppi`) is not comparable to a measured ΔG as a number; its
+correlations still are, which is why `scoring_power.txt` reports both the scale-free statistics and the two RMSE
+(§5.5).
+
+A complex DockTScore cannot score (no pose, a receptor the charged PDB cannot be written from, a non-zero exit) is
+reported as a warning and left without a score; the set goes on, and its row simply has an empty
+`docktscore_<model>`. One model failing does not stop the others.
+
+The affinity columns do not need the rescoring: whenever the set has an `index/affinity.csv`, every summary row
+carries its complex's `log_affinity` and `delta_g_kcal_mol`.
+
+### 4.8 Rescoring a finished run: `rescore_results.py`
+
+`scripts/rescore_results.py DIR` does the same work on a run that is **already docked**, without docking it again:
+a run from before the rescoring existed, one docked with other models, or one docked on another machine. It reads
+the poses of every complex of `DIR`, rescores them, and rewrites that folder's `qualification_summary.csv`,
+`success_rate.txt`, `scoring_power.txt` and `scoring_power.csv` — keeping every column DockThor reported, since the
+rows come from the same `<ligand>_docked_success_rate.csv` files `summarize_results.py` reads.
+
+```fish
+# The set is needed for the receptors, the cofactors and the affinities: --dataset, or --config-dir to infer it.
+python3 scripts/rescore_results.py steadystate --dataset v2013-coreset \
+    --docktscore-path $DOCKTHOR/build/bin/docktscore
+
+# Some complexes, one model, and skipping what is already scored.
+python3 scripts/rescore_results.py steadystate --config-dir v2013-coreset/config \
+    --docktscore-path $DOCKTHOR/build/bin/docktscore \
+    --docktscore-models protease --complex 1bcu 10gs --skip-done
+```
+
+`--skip-done` reads the `<pdb>_scores.csv` already on disk, so an interrupted rescoring resumes; without it every
+complex is scored again. A complex with no `*_docked.mol2`, or with no success-rate report, is skipped with a
+warning. 195 complexes × 4 models take about two minutes.
 
 ---
 
@@ -537,10 +656,16 @@ black scripts; ruff check scripts; python3 -m pytest
 <output-dir>/
 ├── qualification_summary.csv                    top-N report of every complex (§5.3)
 ├── success_rate.txt                             success rate of the set per topK/overall and cutoff (§5.4)
+├── scoring_power.txt / scoring_power.csv        correlation of each model's score with the affinity (§5.5)
 ├── 10gs/
 │   ├── 10gs_run.log                             console output of the DockThor call
 │   ├── 10gs_ligand_docked.csv / .mol2           cluster leaders of all runs, best energy first
 │   ├── 10gs_ligand_docked_success_rate.csv      top-N report, one row (--success-rate, always added by the script)
+│   ├── 10gs_top1.mol2                           best-scored pose alone, what DockTScore rescores (--docktscore-path)
+│   ├── 10gs_top1_<model>.mol2                   the pose as given to one model (DockTScore names its output after it)
+│   ├── 10gs_top1_<model>.score / _score.csv     that model's terms, rounded and at full precision
+│   ├── 10gs_scores.csv                          one row: the complex and its score per model (§7.2)
+│   ├── 10gs_score.log                           console output of every DockTScore call
 │   ├── 10gs_ligand_docked_success_rate_by_run.csv   per-run rates, one line per criterion and cutoff (with --success-rate-by-run)
 │   └── 10gs_ligand_docked_run_<N>.csv / .mol2   leaders of run N (with --success-rate-by-run or --log-every-run)
 ├── 1a30/
@@ -566,9 +691,9 @@ Each complex directory is named after its receptor file (the PDB ID). The DockTh
 `qualification_summary.csv` is the consolidation of every `<pdb>/<ligand>_docked_success_rate.csv`, the one-row top-N report DockThor writes with `--success-rate`: one row per complex, with DockThor's own columns.
 
 ```
-complex,execution_time(s),num_top,overall_min_RMSD_E,overall_min_RMSD,top1_E,top1_RMSD,top2_E,top2_RMSD,...,top10_E,top10_RMSD
-1bcu,2.61,100,-4.174,0.467,-4.974,1.519,-4.174,0.467,...,-4.174,0.467
-1a30,3.70,100,65.495,1.880,48.371,3.471,55.014,2.435,...,65.495,1.880
+complex,execution_time(s),num_top,overall_min_RMSD_E,overall_min_RMSD,docktscore_general_dock,docktscore_general2764,docktscore_protease,docktscore_ppi,log_affinity,delta_g_kcal_mol,top1_E,top1_RMSD,...
+1bcu,2.61,100,-4.174,0.467,-7.154044149116295,-7.2891,-19.4471,-8.0132,3.28,-4.474,-4.974,1.519,...
+1a30,3.70,100,65.495,1.880,,,,,4.62,-6.302,48.371,3.471,...
 ```
 
 | Column | Unit | Description |
@@ -578,6 +703,8 @@ complex,execution_time(s),num_top,overall_min_RMSD_E,overall_min_RMSD,top1_E,top
 | `num_top` | — | Number of leaders of the all-runs clustering |
 | `overall_min_RMSD_E`, `overall_min_RMSD` | kcal/mol, Å | Energy and RMSD of the leader with the lowest RMSD over all the leaders of the all-runs clustering, not only the top N. Empty for results of DockThor 2.1.0 and earlier |
 | `topK_E`, `topK_RMSD` | kcal/mol, Å | Energy and RMSD of the lowest-RMSD pose among the K best-ranked leaders, K = 1 ... N (`--success-rate-top`, 10 by default) |
+| `docktscore_<model>` | kcal/mol | DockTScore of the best-scored pose with that model, one column per `--docktscore-models` (§4.7). Empty for a complex that model could not score. The columns come in the order the models are scored in, `general_dock`, `general2764`, `protease`, `ppi` |
+| `log_affinity`, `delta_g_kcal_mol` | —, kcal/mol | The **measured** affinity of the complex, from `index/affinity.csv` (§1.7). Present whenever the set has that index |
 
 The script rewrites it, and `success_rate.txt`, after every complex, so an interrupted set keeps what is done. Complexes skipped by `--skip-done` are included from their existing files, so a resumed set still gets the whole consolidation. The script always passes `--success-rate` to DockThor (it is added when `--dockthor-args` lacks it), so every docking that succeeds has its row; a complex that failed has none. When complexes use different N, the columns are the union and missing values are empty. The file goes to the common output directory (`<output-dir>/qualification_summary.csv`), or next to the TOMLs when the complexes write to different directories; `--summary-csv FILE` sets it explicitly.
 
@@ -619,6 +746,61 @@ python3 ~/dockthor_coreset/scripts/summarize_results.py --from-summary qualifica
 4. A run succeeds at cutoff `c` when that pose's heavy-atom RMSD to the crystal ligand is `<= c` Å; the rate is `successful runs / N × 100`.
 
 The rate by RMSD is never below the rate by energy; the gap is the share of runs that found the native pose but scored another one better. The usual redocking criterion is **2.0 Å**. The per-run rates stay in each complex's `<ligand>_docked_success_rate_by_run.csv` (`complex,runs,sorting_by,min_Energy,min_RMSD,RMSD_cutoff,%_success`); they are not part of the summary.
+
+### 5.5 What the scoring power means
+
+`scoring_power.txt` is written with `--docktscore-path` (§4.7) or by `rescore_results.py` (§4.8), beside
+`success_rate.txt`, over the complexes that have both a score and a measured affinity. Where the success rate is
+the set's **docking power** (is the pose right?), this is its **scoring power**: does the score rank the
+affinities? It opens with one line per model, then gives each model its own block with its fit and its complexes:
+
+```text
+Scoring power: the DockTScore of the best-scored pose against delta_g_kcal_mol
+Complexes with results: 3
+
+         model     n   Pearson r      R^2  Spearman  RMSE fit  RMSE raw
+  general_dock     3     -0.6972    0.486    -1.000     1.330     2.981
+   general2764     3     -0.7060    0.498    -1.000     1.314     2.894
+      protease     3     -0.3220    0.104    -0.500     1.756     9.790
+           ppi     3      0.9918    0.984     1.000     0.238     1.190
+
+
+## general_dock (docktscore_general_dock)
+Complexes scored: 3
+Pearson r      : -0.6972
+R^2            : 0.4861
+Spearman rho   : -1.0000
+RMSE (fit)     : 1.3296 kcal/mol
+RMSE (raw)     : 2.9808 kcal/mol
+Fit            : delta_g_kcal_mol = -1.0586 * docktscore_general_dock - 13.5933
+
+ complex         score  delta_g_kcal_mol    fitted  residual
+    1bcu       -7.1540           -4.4740   -6.0200   -1.5460
+    3ehy       -6.9093           -7.9790   -6.2792    1.6998
+    10gs       -4.4488           -8.7300   -8.8838   -0.1538
+```
+
+`scoring_power.csv` beside it is the same table for machines — `model,n,pearson,r2,spearman,rmse_fit,rmse_raw,slope,intercept`, one row per model, an undefined statistic left empty — and is what the badges are made from (§7.2).
+
+| Statistic | Meaning |
+|-----------|---------|
+| `Pearson r` | Linear correlation of the score with the measured ΔG — CASF's scoring power. **Positive** is the expected sign: a lower score should mean a stronger affinity. Its magnitude is the same against `log_affinity`, which is only that value divided by a constant |
+| `R^2` | `r²`: the share of the variance of the measured values the score explains |
+| `Spearman rho` | The same correlation on ranks, so it ignores how the two scales differ |
+| `RMSE (fit)` | Error in kcal/mol after the least-squares line printed as `Fit`: how well the score predicts ΔG once rescaled |
+| `RMSE (raw)` | Error of reading the score as the ΔG directly, with no fit |
+
+Every statistic is computed per model, over that model's own complexes. A correlation is scale-free, so two models
+that differ only by a factor have the same `Pearson r`, `Spearman rho` and `RMSE (fit)` and differ only in
+`RMSE (raw)`: that column is the one that says whether a model's numbers are a ΔG in kcal/mol at all.
+The score is compared with `delta_g_kcal_mol` because it is in the same unit, which is what makes the raw RMSE
+mean anything. Fewer than three complexes leave every correlation as `N/A` with a warning rather than a number
+from two points, and a complex scored but absent from the index (or in the index but not scored) is left out of
+the statistics and of the table.
+
+**The numbers above are from a three-complex check and say nothing about the scoring function**: with n = 3 the
+correlation is noise, and here one of the three (10gs) did not dock at all (5.3 Å), so its score is the score of a
+wrong pose. A scoring power is only meaningful over the whole set.
 
 ---
 
@@ -665,7 +847,7 @@ The runners have no GPU: `GENERATIONAL_OCL` runs on their CPU through PoCL, so i
 
 ### 7.2 Results
 
-Each job keeps only its one-row `<pdb>_ligand_docked_success_rate.csv` (artifact `sr-<setup>-<pdb>`, 7 days). The `collect` job gathers them per setup, runs `summarize_results.py` (§4.1 E) and commits:
+Each job keeps only its one-row `<pdb>_ligand_docked_success_rate.csv` and, when the image rescored (below), `<pdb>_scores.csv` (artifact `sr-<setup>-<pdb>`, 7 days). The `collect` job gathers them per setup, runs `summarize_results.py` (§4.1 F), which merges the scores into the summary, and commits:
 
 - `dockthor_results/<version>/<setup>_qualification_summary.csv` and `<setup>_success_rate.txt`, as for earlier versions;
 - `dockthor_results/badges/<setup>_overall.json` and `<setup>_top1.json`, two [shields.io endpoint](https://shields.io/badges/endpoint-badge) badges (`scripts/ci/badge.py`; an endpoint JSON holds one badge) with the success rate at 2 Å of the complexes with results, labeled with the version: `overall`, the % of complexes whose lowest-RMSD leader of all the runs is within 2 Å of the crystal ligand, and `top1`, the % whose best-scored pose is, the usual docking success rate (the columns of `success_rate.txt`, §5.4). Shown in a README as a table:
@@ -676,6 +858,26 @@ Each job keeps only its one-row `<pdb>_ligand_docked_success_rate.csv` (artifact
 | STEADYSTATE Symmetric | ![overall](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gmmsb-lncc/dockthor_coreset/main/dockthor_results/badges/steadystate_symmetric_overall.json) | ![top1](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gmmsb-lncc/dockthor_coreset/main/dockthor_results/badges/steadystate_symmetric_top1.json) |
 | GENERATIONAL_OCL Symmetric | ![overall](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gmmsb-lncc/dockthor_coreset/main/dockthor_results/badges/generational_ocl_symmetric_overall.json) | ![top1](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gmmsb-lncc/dockthor_coreset/main/dockthor_results/badges/generational_ocl_symmetric_top1.json) |
 ```
+
+- `dockthor_results/<version>/<setup>_scoring_power.txt` and `_scoring_power.csv`, and the badges
+  `dockthor_results/badges/<setup>_<model>_{pearson,r2,spearman,rmse}.json` — one per DockTScore model and
+  statistic (§5.5), which is one row per model and one column per statistic in a README table:
+
+```markdown
+| DockTScore model | Pearson r | R² | Spearman ρ | RMSE (fit) |
+| --- | --- | --- | --- | --- |
+| `general_dock` | ![r](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gmmsb-lncc/dockthor_coreset/main/dockthor_results/badges/steadystate_symmetric_general_dock_pearson.json) | ![R²](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gmmsb-lncc/dockthor_coreset/main/dockthor_results/badges/steadystate_symmetric_general_dock_r2.json) | ![ρ](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gmmsb-lncc/dockthor_coreset/main/dockthor_results/badges/steadystate_symmetric_general_dock_spearman.json) | ![RMSE](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gmmsb-lncc/dockthor_coreset/main/dockthor_results/badges/steadystate_symmetric_general_dock_rmse.json) |
+```
+
+  A correlation badge is green from 0.6 up and red below 0.3 or in the wrong direction (a negative `r` means a
+  lower score goes with a *weaker* affinity); an RMSE badge is green up to 2 kcal/mol and red past 3.5.
+
+**The rescoring needs `docktscore` in the release image.** `scripts/ci/dock.sh` looks for `/usr/local/bin/docktscore`
+in the image and adds `--docktscore-path` only when it is there; an image without it just docks, the affinity files
+are not written, and the badges keep their last values. To fill them from a run docked by hand, rescore it with
+`rescore_results.py` (§4.8), copy its `scoring_power.*` into `dockthor_results/<version>/` as
+`<setup>_scoring_power.*`, and run `scripts/ci/badge.py <summary> --version <v> -o dockthor_results/badges/<setup>
+--scoring-power <setup>_scoring_power.csv`.
 
 A complex whose job failed is missing from the summary and listed in the `collect` job's summary page (`Complexes with results: N of 195`).
 

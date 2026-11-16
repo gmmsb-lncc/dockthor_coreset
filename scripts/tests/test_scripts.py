@@ -10,6 +10,7 @@ import grid_toml_generator
 import qualification_set
 import summarize_results
 from coreset.dataset import cofactors_dir, complex_dirs, infer_dataset
+from coreset.scoring import DEFAULT_MODELS, column_of
 from coreset.summary import read_summary
 from test_molecules import CIF, TOP
 
@@ -117,6 +118,95 @@ def test_qualification_set_docks_the_generated_tomls(tmp_path, capsys):
     with pytest.raises(SystemExit):
         qualification_set.main([str(empty), "--dockthor-path", str(dockthor)])
     assert "grid_toml_generator.py" in capsys.readouterr().err
+
+
+FAKE_DOCKTHOR = """#!/usr/bin/env python3
+# Writes what DockThor writes of one complex: the poses and the --success-rate report.
+import sys
+from pathlib import Path
+config = Path(sys.argv[sys.argv.index("--config") + 1])
+out = Path(sys.argv[sys.argv.index("--output-dir") + 1]) / config.stem
+out.mkdir(parents=True, exist_ok=True)
+(out / f"{config.stem}_ligand_docked.mol2").write_text("@<TRIPOS>MOLECULE\\nbest\\n@<TRIPOS>MOLECULE\\nsecond\\n")
+(out / f"{config.stem}_ligand_docked_success_rate.csv").write_text(
+    f"complex,execution_time(s),num_top,top1_E,top1_RMSD\\n{config.stem},1,1,-9,1.2\\n"
+)
+"""
+
+FAKE_DOCKTSCORE = """#!/usr/bin/env python3
+# Writes the <pose>_score.csv of --report-format csv, in the current directory.
+import sys
+from pathlib import Path
+pose = Path(sys.argv[sys.argv.index("-l") + 1])
+assert Path(sys.argv[sys.argv.index("-p") + 1]).name.endswith("_prep.pdb"), "the receptor must be the charged PDB"
+Path(pose.name.split(".")[0] + "_score.csv").write_text("ligand,DockTScore\\n" + pose.name + ",-6.5\\n")
+"""
+
+
+def executable(path: Path, text: str) -> Path:
+    path.write_text(text)
+    path.chmod(0o755)
+    return path
+
+
+def test_qualification_set_rescores_and_reports_the_scoring_power(tmp_path, capsys):
+    """--docktscore-path: the score of the best-scored pose lands in the summary, next to the measured affinity of
+    the complex, and scoring_power.txt is written beside success_rate.txt."""
+    root = make_set(tmp_path)
+    # A receptor the charged PDB can be written from, and the affinities a set keeps.
+    (root / "1abc/receptors/1abc.in").write_text(
+        "    1   34   -9.68400   13.42400   -1.74500      2     5     6     7     0     0 -0.853  N   GLY X   1    1\n"
+    )
+    (root / "index/affinity.csv").write_text("complex,log_affinity,delta_g_kcal_mol\n1abc,5.85,-7.979\n")
+    grid_toml_generator.main([str(root)])
+    args = [
+        str(root),
+        "-o",
+        "runs",
+        "--dockthor-path",
+        str(executable(tmp_path / "dockthor", FAKE_DOCKTHOR)),
+        "--docktscore-path",
+        str(executable(tmp_path / "docktscore", FAKE_DOCKTSCORE)),
+    ]
+    capsys.readouterr()
+
+    assert qualification_set.main(args) == 0
+    row = read_summary(root / "runs" / "qualification_summary.csv")[0]
+    assert row["complex"] == "1abc"
+    assert [row[column_of(model)] for model in DEFAULT_MODELS] == ["-6.5"] * len(DEFAULT_MODELS)
+    assert (row["log_affinity"], row["delta_g_kcal_mol"]) == ("5.85", "-7.979")
+    # The pose scored is the first of the docked file, and its files stay with the complex.
+    assert "best" in (root / "runs/1abc/1abc_top1.mol2").read_text()
+    assert "second" not in (root / "runs/1abc/1abc_top1.mol2").read_text()
+    assert (root / "runs/1abc/1abc_top1_general_dock_score.csv").is_file()
+    assert (root / "runs/1abc/1abc_scores.csv").is_file()  # the one row a parallel job hands back
+    # The charged PDB was written from the .in, into the set.
+    assert (root / "1abc/receptors/prep/1abc_prep.pdb").is_file()
+    power = (root / "runs" / "scoring_power.txt").read_text()
+    assert "Complexes with results: 1" in power
+    assert "Pearson r      : N/A" in power  # one complex: nothing to correlate, and it says so
+    for model in DEFAULT_MODELS:  # one block per model, and a row per model in the comparison table
+        assert f"## {model} ({column_of(model)})" in power
+    scoring_csv = read_summary(root / "runs" / "scoring_power.csv")
+    assert [row["model"] for row in scoring_csv] == DEFAULT_MODELS
+
+
+def test_qualification_set_without_rescoring_writes_no_scoring_power(tmp_path, capsys):
+    """Without --docktscore-path nothing is rescored, so there is no scoring power to report -- but the summary
+    still carries the measured affinity."""
+    root = make_set(tmp_path)
+    (root / "index/affinity.csv").write_text("complex,log_affinity,delta_g_kcal_mol\n1abc,5.85,-7.979\n")
+    grid_toml_generator.main([str(root)])
+    capsys.readouterr()
+
+    args = [str(root), "-o", "runs", "--dockthor-path", str(executable(tmp_path / "dockthor", FAKE_DOCKTHOR))]
+    assert qualification_set.main(args) == 0
+    row = read_summary(root / "runs" / "qualification_summary.csv")[0]
+    assert not [column for column in row if column.startswith("docktscore")]
+    assert row["delta_g_kcal_mol"] == "-7.979"
+    assert not (root / "runs" / "scoring_power.txt").exists()
+    with pytest.raises(SystemExit):  # --docktscore-args without the binary
+        qualification_set.main([*args, "--docktscore-args=-v"])
 
 
 def test_summarize_results(tmp_path, capsys, monkeypatch):

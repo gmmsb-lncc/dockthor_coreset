@@ -27,7 +27,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from coreset import affinity
-from coreset.dataset import COFACTORS_DIR, ligand_path, receptor_path
+from coreset.charged_pdb import write_charged_pdb
+from coreset.dataset import COFACTORS_DIR, ligand_path, prep_path, receptor_path
 
 #: Residue names of the monatomic ions carried as cofactors. A record counts as one only when its atom name
 #: is the residue name too, so the alpha carbon CA of an amino acid is never taken for a calcium.
@@ -240,8 +241,8 @@ def prepare_complex(
     `output_dir/<pdb>/` keeps **everything** the facilities wrote, one folder per complex, with the console
     output of every call in `output_dir/<pdb>/logs/`. `dataset` then receives only the files the set is made
     of (README 1.4), in `dataset/<pdb>/`: the ligand topology and the cofactor topologies (MMFFLigand) and the
-    receptor topology under the name of the complex (PDBThorBox). What a skipped facility would have written is
-    left in the set as it is. Raises StepFailed when a facility fails.
+    receptor topology with its charged PDB, under the name of the complex (PDBThorBox). What a skipped
+    facility would have written is left in the set as it is. Raises StepFailed when a facility fails.
     """
     protein = casf / pdb / f"{pdb}_protein.pdb"
     if not protein.is_file():
@@ -263,6 +264,10 @@ def prepare_complex(
         install(top, dataset / ligand_path(pdb))
     if topology is not None:
         install(topology, dataset / receptor_path(pdb))
+        # The charged PDB DockTScore reads (occupancy = charge, B-factor = MMFF type). It is written from the
+        # topology the set just received, not copied from the one PDBThorBox wrote beside it, so the receptor
+        # DockTScore scores is always the atoms, charges and types DockThor docks into (coreset/charged_pdb.py).
+        write_charged_pdb(dataset / receptor_path(pdb), dataset / prep_path(pdb))
     for cofactor in cofactor_tops:
         install(cofactor, dataset / pdb / COFACTORS_DIR / cofactor.name)
         install(cofactor.with_suffix(".pdb"), dataset / pdb / COFACTORS_DIR / f"{cofactor.stem}.pdb")

@@ -20,7 +20,8 @@ target-version = "py312"
 select = ["E", "W", "F", "I", "B", "UP"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["coreset", "grid_toml_generator", "qualification_set", "summarize_results", "test_molecules"]
+known-first-party = ["badge", "coreset", "grid_toml_generator", "qualification_set", "rescore_results",
+                     "summarize_results", "test_molecules", "test_scoring"]
 
 [tool.pytest.ini_options]
 testpaths = ["scripts/tests"]

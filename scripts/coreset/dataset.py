@@ -90,6 +90,11 @@ def infer_dataset(toml_dir: Path) -> Path | None:
 
 #: The folders of a complex directory, one per role (DockThor's own names for them).
 RECEPTORS_DIR = "receptors"
+#: The index folder of a set: index/affinity.csv, the measured affinities (coreset/affinity.py).
+INDEX_DIR = "index"
+#: Inside receptors/: the charged PDB DockTScore reads (-p), which DockThor never looks at (it reads the .in, and
+#: .pdb is not one of its receptor extensions).
+PREP_DIR = "prep"
 LIGANDS_DIR = "ligands"
 COFACTORS_DIR = "cofactors"
 LIGAND_TAG = "_ligand"  # 10gs_ligand.top is the ligand of complex 10gs
@@ -98,6 +103,12 @@ LIGAND_TAG = "_ligand"  # 10gs_ligand.top is the ligand of complex 10gs
 def receptor_path(pdb: str) -> Path:
     """The receptor topology of a complex, relative to the set root."""
     return Path(pdb) / RECEPTORS_DIR / f"{pdb}.in"
+
+
+def prep_path(pdb: str) -> Path:
+    """The charged PDB of a complex (occupancy = charge, B-factor = MMFF type), relative to the set root: what
+    DockTScore reads as its receptor, written by PDBThorBox beside the .in topology."""
+    return Path(pdb) / RECEPTORS_DIR / PREP_DIR / f"{pdb}_prep.pdb"
 
 
 def ligand_path(pdb: str) -> Path:

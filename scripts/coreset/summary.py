@@ -6,10 +6,38 @@ import re
 import sys
 from pathlib import Path
 
+from coreset.affinity import read_affinities
+from coreset.dataset import infer_dataset
+from coreset.scoring import COLUMN_PREFIX, DEFAULT_MODELS, SCORES_CSV, column_of
+from coreset.statistics import write_scoring_power_csv, write_scoring_power_txt
+
 SUCCESS_RATE_CSV = (
     "_docked_success_rate.csv"  # suffix of DockThor's --success-rate report, <ligand>_docked_success_rate.csv
 )
 OVERALL = "overall"  # success-rate column of overall_min_RMSD, before the topK ones
+#: Columns the rescoring adds to a summary row, after DockThor's own and before the topK ones: one
+#: `docktscore_<model>` per DockTScore model (coreset/scoring.py) and the measured affinity of the complex
+#: (coreset/affinity.py).
+AFFINITY_COLUMNS = ["log_affinity", "delta_g_kcal_mol"]
+#: What the scoring power correlates: the score against the measured affinity in the same unit.
+MEASURED_COLUMN = "delta_g_kcal_mol"
+
+
+#: The order the models are reported in: the order they are scored in, then any other model by name. A summary
+#: read back from a CSV holds its columns sorted, so the report order comes from here, not from the file.
+MODEL_ORDER = [COLUMN_PREFIX, *(column_of(model) for model in DEFAULT_MODELS)]
+
+
+def score_column_key(column: str) -> tuple:
+    """Report order of a score column: the known models in their own order, then the rest by name."""
+    return (MODEL_ORDER.index(column), "") if column in MODEL_ORDER else (len(MODEL_ORDER), column)
+
+
+def score_columns(reports: list[dict]) -> list[str]:
+    """The `docktscore*` columns of the rows, in report order: one per model that was run. A bare `docktscore`
+    column (a run of before the models were reported separately) counts as one and comes first."""
+    columns = {column for report in reports for column in report if column.startswith(COLUMN_PREFIX)}
+    return sorted(columns, key=score_column_key)
 
 
 def read_success_rate_file(path: Path) -> dict[str, str]:
@@ -31,14 +59,19 @@ def read_success_rate(out_dir: Path) -> dict[str, str]:
 
 
 def column_key(column: str) -> tuple:
-    """Summary column order: complex, execution_time(s), num_top, overall_min_RMSD_E, overall_min_RMSD, top1_E,
-    top1_RMSD, top2_E, ... Unknown columns go last, by name."""
+    """Summary column order: complex, execution_time(s), num_top, overall_min_RMSD_E, overall_min_RMSD, then the
+    rescoring columns (every docktscore_<model>, then log_affinity, delta_g_kcal_mol), then top1_E, top1_RMSD,
+    top2_E, ... Unknown columns go last, by name."""
     fixed = ["complex", "execution_time(s)", "num_top", "overall_min_RMSD_E", "overall_min_RMSD"]
     if column in fixed:
         return (0, fixed.index(column))
+    if column.startswith(COLUMN_PREFIX):
+        return (1, 0, *score_column_key(column))
+    if column in AFFINITY_COLUMNS:
+        return (1, 1, AFFINITY_COLUMNS.index(column))
     if match := re.fullmatch(r"top(\d+)_(E|RMSD)", column):
-        return (1, int(match[1]), match[2] != "E")
-    return (2, column)
+        return (2, int(match[1]), match[2] != "E")
+    return (3, column)
 
 
 def top_ks(reports: list[dict]) -> list[int]:
@@ -58,6 +91,47 @@ def write_summary(path: Path, reports: list[dict]) -> None:
         writer.writerow(columns)
         for report in reports:
             writer.writerow([report.get(c, "") for c in columns])
+
+
+def add_affinity(report: dict, affinities: dict[str, dict[str, str]]) -> dict:
+    """The row with the measured affinity of its complex added (log_affinity, delta_g_kcal_mol), when the set has
+    an index/affinity.csv holding it; otherwise the row as it is."""
+    entry = affinities.get(report.get("complex", ""))
+    if entry is None:
+        return report
+    return report | {column: entry[column] for column in AFFINITY_COLUMNS if column in entry}
+
+
+def write_scoring_power(path: Path, reports: list[dict]) -> bool:
+    """Write scoring_power.txt, and scoring_power.csv beside it, when the rows hold a score; False when none does
+    (nothing was rescored, so there is no scoring power to report and neither file is written)."""
+    columns = [column for column in score_columns(reports) if any(report.get(column) for report in reports)]
+    if not columns:
+        return False
+    write_scoring_power_txt(path, reports, columns, MEASURED_COLUMN, len(reports))
+    write_scoring_power_csv(path.with_suffix(".csv"), reports, columns, MEASURED_COLUMN)
+    return True
+
+
+def read_scores_file(path: Path) -> dict[str, str]:
+    """{column: value} of one <pdb>_scores.csv, the row a rescoring job hands back; empty if it is malformed."""
+    return read_success_rate_file(path)
+
+
+def merge_scores(reports: list[dict], root: Path) -> list[dict]:
+    """The reports with the scores of every <pdb>_scores.csv under root added to the row of their complex.
+
+    A rescoring that ran elsewhere (a CI job, another machine) hands back that one-row file beside the
+    success-rate report; a file whose complex has no report is ignored."""
+    by_complex = {report.get("complex", ""): report for report in reports}
+    for path in sorted(root.rglob(f"*{SCORES_CSV}")):
+        scores = read_scores_file(path)
+        name = scores.pop("complex", "") or path.name.removesuffix(SCORES_CSV)
+        if report := by_complex.get(name):
+            report.update({column: value for column, value in scores.items() if value})
+        else:
+            print(f"[warn] {path}: no report of {name}, scores skipped")
+    return reports
 
 
 def read_summary(path: Path) -> list[dict]:
@@ -127,6 +201,9 @@ def generate_summary(summary_csv: Path, rmsd_cutoff: float) -> int:
     success_rate_path = Path.cwd() / "success_rate.txt"
     write_success_rate_txt(success_rate_path, reports, success_rate_cutoffs(rmsd_cutoff), len(reports))
     print(f"Success rates of {len(reports)} complex(es) from {summary_path}: {success_rate_path}")
+    scoring_power_path = Path.cwd() / "scoring_power.txt"
+    if write_scoring_power(scoring_power_path, reports):
+        print(f"Scoring power: {scoring_power_path}")
     return 0
 
 
@@ -162,6 +239,7 @@ def collect(directory: Path, config_dir: Path | None, summary_csv: Path | None, 
         return 1
 
     reports, seen = collect_reports(root)
+    reports = merge_scores(reports, root)  # the scores of a rescoring that ran with the docking
     if not reports or not top_ks(reports):
         print(f"[error] no *{SUCCESS_RATE_CSV} with topK_RMSD columns under {root}", file=sys.stderr)
         return 1
@@ -173,6 +251,10 @@ def collect(directory: Path, config_dir: Path | None, summary_csv: Path | None, 
             print(f"[error] --config-dir {toml_dir} is not a directory", file=sys.stderr)
             return 1
         expected = sorted(p.stem for p in toml_dir.glob("*.toml"))
+        # The reports hold no affinity (DockThor does not know it); with the TOMLs, their set does.
+        if (dataset := infer_dataset(toml_dir)) is not None:
+            affinities = read_affinities(dataset)
+            reports = [add_affinity(report, affinities) for report in reports]
     num_run = len(expected) if expected else len(reports)
 
     summary_path = summary_csv.expanduser().resolve() if summary_csv else root / "qualification_summary.csv"
@@ -182,6 +264,8 @@ def collect(directory: Path, config_dir: Path | None, summary_csv: Path | None, 
     print(f"Collected {len(reports)} of {num_run} complex(es) from {root}")
     print(f"Summary: {summary_path}")
     print(f"Success rates: {success_rate_path}")
+    if write_scoring_power(summary_path.with_name("scoring_power.txt"), reports):
+        print(f"Scoring power: {summary_path.with_name('scoring_power.txt')}")
     if missing := [pdb for pdb in expected if pdb not in seen]:
         print(f"[warn] {len(missing)} complex(es) without results: {' '.join(missing)}")
     return 0

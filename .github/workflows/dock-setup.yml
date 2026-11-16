@@ -2,7 +2,7 @@ name: "Dock one setup (one job per complex)"
 
 # Called by qualification.yml once per setup: a matrix of one job per complex (at most 256 per matrix, the set has
 # 195). Each job docks its complex in the private DockThor release image and uploads only its one-row
-# <pdb>_ligand_docked_success_rate.csv as the artifact sr-<setup>-<pdb>. Poses, run logs and the image never leave the
+# <pdb>_ligand_docked_success_rate.csv and <pdb>_scores.csv as the artifact sr-<setup>-<pdb>. Poses, run logs and the image never leave the
 # runner: this repository and its Actions logs are public.
 
 on:
@@ -67,11 +67,13 @@ jobs:
           SET_DIR: ${{ inputs.set_dir }}
         run: scripts/ci/dock.sh "$SETUP" "$PDB" "$IMAGE"
 
-      - name: Keep the success-rate report
+      - name: Keep the success-rate report and the scores
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sr-${{ inputs.setup }}-${{ matrix.pdb }}
-          path: ci_out/${{ inputs.setup }}/${{ matrix.pdb }}/*_docked_success_rate.csv
+          path: |
+            ci_out/${{ inputs.setup }}/${{ matrix.pdb }}/*_docked_success_rate.csv
+            ci_out/${{ inputs.setup }}/${{ matrix.pdb }}/*_scores.csv
           if-no-files-found: warn
           retention-days: 7

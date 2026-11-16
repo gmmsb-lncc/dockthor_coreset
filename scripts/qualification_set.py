@@ -5,8 +5,10 @@ Dock a qualification set with DockThor and report its success rates.
 The set directory holds, per complex (README 1.4):
 
     <pdb>/receptors/<pdb>.in       receptor topology
+    <pdb>/receptors/prep/*_prep.pdb charged PDB, the receptor DockTScore reads
     <pdb>/ligands/<pdb>_ligand.top ligand topology
-    <pdb>/cofactors/*.top          optional, cofactor topologies
+    <pdb>/cofactors/*.top          optional, cofactor topologies (and *.pdb, read by DockTScore)
+    index/affinity.csv             the measured affinities
     config/<pdb>.toml              the inputs and the box, written by scripts/grid_toml_generator.py
 
 DockThor runs from the set root on every <pdb>.toml of --config-dir (default config/, or --complex), always with
@@ -14,6 +16,13 @@ DockThor runs from the set root on every <pdb>.toml of --config-dir (default con
 qualification_summary.csv, the consolidation of every <ligand>_docked_success_rate.csv, and success_rate.txt, the %
 of complexes whose topK_RMSD <= cutoff for every topK (and whose overall_min_RMSD <= cutoff, column overall) and every
 cutoff 0.5, 1.0, ... up to --rmsd-cutoff. Reports docked elsewhere are merged with scripts/summarize_results.py.
+
+The summary always carries the measured affinity of each complex (log_affinity, delta_g_kcal_mol, from
+index/affinity.csv). With --docktscore-path, DockTScore also rescores the best-scored pose of every complex right
+after it docks, once per model of --docktscore-models: the scores go in the summary as docktscore_<model> columns,
+and scoring_power.txt and scoring_power.csv beside success_rate.txt report the Pearson r, R^2, Spearman rho and the
+two RMSE of every model against the measured affinity. A finished run is rescored afterwards, without docking it
+again, with scripts/rescore_results.py.
 
 The set is a directory, a git repository (--git-url, cloned or reused), or inferred from --config-dir alone (the
 first folder from there up that holds the TOMLs' ligand and receptor).
@@ -24,6 +33,8 @@ Examples:
         --dockthor-path build/bin/dockthor --dockthor-args='--ga-nrun 4 --seed 7'
     python3 scripts/qualification_set.py --config-dir v2013-coreset/config -o steadystate \\
         --dockthor-path build/bin/dockthor --rmsd-cutoff 3
+    python3 scripts/qualification_set.py v2013-coreset -o scored --dockthor-path build/bin/dockthor \\
+        --docktscore-path build/bin/docktscore            # dock, rescore, and report the scoring power
     python3 scripts/qualification_set.py --git-url https://github.com/<org>/<dataset>.git --git-subdir v2013-coreset \\
         -o steadystate --dockthor-path build/bin/dockthor \\
         --dockthor-args='--ga-nrun 24 --success-rate --success-rate-by-run 2.0'
@@ -32,13 +43,14 @@ The TOMLs are generated first, with scripts/grid_toml_generator.py <set>.
 """
 
 import argparse
+import shlex
 import sys
 from pathlib import Path
 
 # The library lives next to this script (scripts/coreset/).
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from coreset import docking  # noqa: E402
+from coreset import docking, scoring  # noqa: E402
 from coreset.dataset import clone_dataset, infer_dataset  # noqa: E402
 
 DEFAULT_CONFIG_DIR = Path("config")
@@ -133,6 +145,31 @@ def parse_args(argv=None):
         "and each topK, the %% of complexes with topK_RMSD <= cutoff, and in the overall column with "
         "overall_min_RMSD <= cutoff.",
     )
+    score = parser.add_argument_group("rescoring with DockTScore")
+    score.add_argument(
+        "--docktscore-path",
+        type=Path,
+        metavar="DOCKTSCORE",
+        help="Path to the docktscore binary. Given, the best-scored pose of every complex is rescored right after "
+        "it docks (<output-dir>/<pdb>/<pdb>_top1.mol2 and its .score), the score goes in the summary as the "
+        "docktscore_<model> columns, and scoring_power.txt and scoring_power.csv are written beside "
+        "success_rate.txt.",
+    )
+    score.add_argument(
+        "--docktscore-models",
+        "--docktscore-model",
+        nargs="+",
+        default=scoring.DEFAULT_MODELS,
+        metavar="MODEL",
+        help="DockTScore coefficients to score with, one summary column each (docktscore_<model>): general, "
+        "general2764, general_dock, kinase, ppi, protease. Every default model scores a pose in about 0.1 s.",
+    )
+    score.add_argument(
+        "--docktscore-args",
+        default="",
+        help="Extra command-line arguments passed to DockTScore; use the = form, e.g. --docktscore-args='-v'.",
+    )
+
     exe.add_argument(
         "--skip-done", action="store_true", help="Skip systems that already have a *_docked.csv in <output-dir>/<pdb>."
     )
@@ -154,6 +191,13 @@ def parse_args(argv=None):
         parser.error("--git-ref, --git-subdir, --clone-dir and --git-update need --git-url")
     if args.rmsd_cutoff <= 0:
         parser.error("--rmsd-cutoff must be positive")
+    if args.docktscore_path is None and args.docktscore_args:
+        parser.error("--docktscore-args needs --docktscore-path")
+    args.docktscore_args = shlex.split(args.docktscore_args)
+    if args.docktscore_path is not None:
+        args.docktscore_path = args.docktscore_path.expanduser().resolve()
+        if not args.docktscore_path.is_file():
+            parser.error(f"--docktscore-path {args.docktscore_path} is not a file")
     args.parser = parser
     return args
 

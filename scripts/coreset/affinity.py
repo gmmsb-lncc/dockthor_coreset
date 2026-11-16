@@ -30,6 +30,8 @@ import re
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
+from coreset.dataset import INDEX_DIR
+
 #: ΔG = -1.364 × pKd at 25 °C, in kcal/mol: the conversion CASF-2013 uses to compare with computed energies.
 KCAL_PER_LOG_UNIT = -1.364
 
@@ -68,6 +70,19 @@ class Entry:
     cluster: int
     uniprot: str = ""
     protein: str = ""
+
+
+def read_affinity_csv(path: Path) -> dict[str, dict[str, str]]:
+    """{complex: {column: value}} of an index/affinity.csv, the values as the text of the file; empty if absent."""
+    if not path.is_file():
+        return {}
+    with open(path, newline="") as stream:
+        return {row["complex"]: row for row in csv.DictReader(stream) if row.get("complex")}
+
+
+def read_affinities(dataset: Path) -> dict[str, dict[str, str]]:
+    """The affinities of a set, by complex: `<dataset>/index/affinity.csv` (empty when the set has no index)."""
+    return read_affinity_csv(dataset / INDEX_DIR / CSV_FILE)
 
 
 def columns() -> list[str]:

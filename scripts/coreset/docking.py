@@ -9,7 +9,16 @@ import time
 import tomllib
 from pathlib import Path
 
-from coreset.summary import read_success_rate, success_rate_cutoffs, write_success_rate_txt, write_summary
+from coreset import scoring
+from coreset.affinity import read_affinities
+from coreset.summary import (
+    add_affinity,
+    read_success_rate,
+    success_rate_cutoffs,
+    write_scoring_power,
+    write_success_rate_txt,
+    write_summary,
+)
 
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -97,11 +106,25 @@ def run(args, systems: list[str]) -> int:
     out_dirs = [d for t in tomls if (d := system_dir_of(t, args.dataset, output_dir)) is not None]
     summary_path = summary_path_of(args, out_dirs, toml_dir)
     success_rate_path = summary_path.with_name("success_rate.txt")
+    scoring_power_path = summary_path.with_name("scoring_power.txt")
     cutoffs = success_rate_cutoffs(args.rmsd_cutoff)
+    affinities = read_affinities(args.dataset)  # empty when the set keeps no index/affinity.csv
+    rescore = getattr(args, "docktscore_path", None) is not None
+
+    def complex_report(pdb: str, out_dir: Path) -> dict | None:
+        """The summary row of a docked complex: DockThor's success-rate report, the DockTScore of its best-scored
+        pose per model when --docktscore-path was given, and the measured affinity of the complex."""
+        report = read_success_rate(out_dir)
+        if not report:
+            return None
+        if rescore:
+            report |= scoring.score_complex(args, pdb, out_dir)
+        return add_affinity(report, affinities)
 
     def write_reports() -> None:  # rewritten after every complex, so an interrupted set keeps what is done
         write_summary(summary_path, reports)
         write_success_rate_txt(success_rate_path, reports, cutoffs, len(tomls))
+        write_scoring_power(scoring_power_path, reports)
 
     total_start = time.monotonic()
     for index, toml_path in enumerate(tomls, start=1):
@@ -109,7 +132,7 @@ def run(args, systems: list[str]) -> int:
         out_dir = system_dir_of(toml_path, args.dataset, output_dir)
         if args.skip_done and out_dir is not None and any(out_dir.glob("*_docked.csv")):
             print(f"[{index}/{len(tomls)}] {pdb}: skip, results already in {out_dir}")
-            if report := read_success_rate(out_dir):
+            if report := complex_report(pdb, out_dir):
                 reports.append(report)
                 if not args.dry_run:
                     write_reports()
@@ -133,7 +156,7 @@ def run(args, systems: list[str]) -> int:
         elapsed = time.monotonic() - start
         status = "ok" if returncode == 0 else f"FAILED (exit {returncode})"
         print(f"    {status} in {elapsed:.1f}s" + (f", log: {log_path}" if log_path else ""))
-        if returncode == 0 and out_dir is not None and (report := read_success_rate(out_dir)):
+        if returncode == 0 and out_dir is not None and (report := complex_report(pdb, out_dir)):
             reports.append(report)
         write_reports()
         if returncode != 0:
@@ -145,6 +168,8 @@ def run(args, systems: list[str]) -> int:
     if not args.dry_run and tomls:
         print(f"Summary: {summary_path} ({len(reports)} complex(es) with a _success_rate.csv)")
         print(f"Success rates: {success_rate_path}")
+        if scoring_power_path.is_file():
+            print(f"Scoring power: {scoring_power_path}")
         if not reports:
             print("[warn] no _success_rate.csv found; check the run logs")
     if failed:
