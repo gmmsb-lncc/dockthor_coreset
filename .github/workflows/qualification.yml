@@ -4,7 +4,7 @@ run-name: "dockthor-v${{ github.event.client_payload.version || inputs.version }
 
 # Redocks the 195 complexes with every setup of the release qualification, in the private image
 # ghcr.io/gmmsb-lncc/dockthor:<version>, one job per complex, then merges the reports with
-# `qualification_set.py --collect` into dockthor_results/<version>/<setup>_qualification_summary.csv and
+# `summarize_results.py` into dockthor_results/<version>/<setup>_qualification_summary.csv and
 # <setup>_success_rate.txt, and updates the badges in dockthor_results/badges/ (README §7).
 #
 # Started by gmmsb-lncc/dockthor-suite's release.yml after each release (repository_dispatch `dockthor-release`,
@@ -40,6 +40,10 @@ on:
 permissions:
   contents: read
 
+# The qualification set of the repository. Another set is qualified by pointing this at its directory.
+env:
+  SET_DIR: v2013-coreset
+
 concurrency:
   group: qualification-${{ github.event.client_payload.version || inputs.version }}
   cancel-in-progress: false
@@ -53,12 +57,15 @@ jobs:
       folder: ${{ steps.plan.outputs.folder }}
       commit: ${{ steps.plan.outputs.commit }}
       systems: ${{ steps.plan.outputs.systems }}
+      set_dir: ${{ steps.plan.outputs.set_dir }}
       steadystate: ${{ steps.plan.outputs.steadystate }}
       ocl: ${{ steps.plan.outputs.ocl }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          sparse-checkout: toml
+          # The ligands only (<set>/<pdb>/ligands/<pdb>_ligand.top), to list the complexes.
+          sparse-checkout-cone-mode: false
+          sparse-checkout: /${{ env.SET_DIR }}/*/ligands/*_ligand.top
 
       - id: plan
         env:
@@ -69,6 +76,7 @@ jobs:
           INPUT_SYSTEMS: ${{ inputs.systems }}
           INPUT_FOLDER: ${{ inputs.results-folder }}
           INPUT_COMMIT: ${{ inputs.commit }}
+          SET_DIR: ${{ env.SET_DIR }}
         run: |
           python3 - <<'EOF'
           import json, os, re, sys
@@ -82,11 +90,13 @@ jobs:
                   sys.exit(f"::error::invalid {name}: {value!r}")
 
           setups = "both" if dispatch else os.environ["INPUT_SETUPS"]
-          available = sorted(p.stem for p in Path("toml").glob("*.toml"))
+          # One directory per complex, holding its ligand: <set>/<pdb>/ligands/<pdb>_ligand.top
+          complexes = Path(os.environ["SET_DIR"]).iterdir()
+          available = sorted(d.name for d in complexes if (d / "ligands" / f"{d.name}_ligand.top").is_file())
           wanted = [] if dispatch else os.environ["INPUT_SYSTEMS"].split()
           unknown = [pdb for pdb in wanted if pdb not in available]
           if unknown:
-              sys.exit(f"::error::no TOML for: {' '.join(unknown)}")
+              sys.exit(f"::error::not in the set: {' '.join(unknown)}")
           systems = wanted or available
 
           outputs = {
@@ -94,6 +104,7 @@ jobs:
               "folder": folder,
               "commit": str(dispatch or os.environ["INPUT_COMMIT"] == "true").lower(),
               "systems": json.dumps(systems),
+              "set_dir": os.environ["SET_DIR"],
               "steadystate": str(setups in ("both", "steadystate_symmetric")).lower(),
               "ocl": str(setups in ("both", "generational_ocl_symmetric")).lower(),
           }
@@ -116,6 +127,7 @@ jobs:
       setup: steadystate_symmetric
       systems: ${{ needs.plan.outputs.systems }}
       image: ghcr.io/gmmsb-lncc/dockthor:${{ needs.plan.outputs.version }}
+      set_dir: ${{ needs.plan.outputs.set_dir }}
 
   ocl:
     name: GENERATIONAL_OCL Symmetric
@@ -129,6 +141,7 @@ jobs:
       setup: generational_ocl_symmetric
       systems: ${{ needs.plan.outputs.systems }}
       image: ghcr.io/gmmsb-lncc/dockthor:${{ needs.plan.outputs.version }}
+      set_dir: ${{ needs.plan.outputs.set_dir }}
 
   # Two retry rounds: dock again, on fresh runners, the complexes with no report yet (a failed job, often a network
   # error while pulling the image). A job that failed and then passed on retry still marks the run as failed.
@@ -173,6 +186,7 @@ jobs:
       setup: steadystate_symmetric
       systems: ${{ needs.retry1.outputs.steadystate }}
       image: ghcr.io/gmmsb-lncc/dockthor:${{ needs.plan.outputs.version }}
+      set_dir: ${{ needs.plan.outputs.set_dir }}
 
   ocl_retry1:
     name: GENERATIONAL_OCL Symmetric retry 1
@@ -186,6 +200,7 @@ jobs:
       setup: generational_ocl_symmetric
       systems: ${{ needs.retry1.outputs.ocl }}
       image: ghcr.io/gmmsb-lncc/dockthor:${{ needs.plan.outputs.version }}
+      set_dir: ${{ needs.plan.outputs.set_dir }}
 
   retry2:
     name: Find failed complexes (retry 2)
@@ -225,6 +240,7 @@ jobs:
       setup: steadystate_symmetric
       systems: ${{ needs.retry2.outputs.steadystate }}
       image: ghcr.io/gmmsb-lncc/dockthor:${{ needs.plan.outputs.version }}
+      set_dir: ${{ needs.plan.outputs.set_dir }}
 
   ocl_retry2:
     name: GENERATIONAL_OCL Symmetric retry 2
@@ -238,11 +254,13 @@ jobs:
       setup: generational_ocl_symmetric
       systems: ${{ needs.retry2.outputs.ocl }}
       image: ghcr.io/gmmsb-lncc/dockthor:${{ needs.plan.outputs.version }}
+      set_dir: ${{ needs.plan.outputs.set_dir }}
 
   collect:
     name: Collect and commit
     needs: [plan, steadystate, ocl, retry1, steadystate_retry1, ocl_retry1, retry2, steadystate_retry2, ocl_retry2]
-    # After both setups and the retries, even when some complexes still failed: --collect lists the missing ones.
+    # After both setups and the retries, even when some complexes still failed: summarize_results.py lists the missing
+    # ones.
     if: always() && needs.plan.result == 'success'
     runs-on: ubuntu-latest
     permissions:
@@ -267,6 +285,9 @@ jobs:
 
       - name: Merge each setup
         run: |
+          # --config-dir counts the reports against the set's complexes, so its TOMLs are generated first
+          # (they are not committed, README 1.5); all 195 take well under a second.
+          python3 scripts/grid_toml_generator.py "$SET_DIR" --overwrite > /dev/null
           setups=()
           [ "$RUN_STEADYSTATE" = "true" ] && setups+=(steadystate_symmetric)
           [ "$RUN_OCL" = "true" ] && setups+=(generational_ocl_symmetric)
@@ -276,13 +297,21 @@ jobs:
           for setup in "${setups[@]}"; do
             mkdir -p "ci_collect/$setup"
             # One folder per artifact (sr-<setup>-<pdb>/); gather the setup's reports in one folder.
-            find ci_artifacts -path "ci_artifacts/sr-$setup-*" -name '*_docked_success_rate.csv' \
+            find ci_artifacts -path "ci_artifacts/sr-$setup-*" \
+              \( -name '*_docked_success_rate.csv' -o -name '*_scores.csv' \) \
               -exec cp {} "ci_collect/$setup/" \;
             echo "### $setup" >> "$GITHUB_STEP_SUMMARY"
-            if python3 scripts/qualification_set.py --collect "ci_collect/$setup" --config-dir toml \
+            if python3 scripts/summarize_results.py "ci_collect/$setup" --config-dir "$SET_DIR/config" \
                 | tee "ci_collect/$setup.log"; then
               cp "ci_collect/$setup/qualification_summary.csv" "$results/${setup}_qualification_summary.csv"
               cp "ci_collect/$setup/success_rate.txt" "$results/${setup}_success_rate.txt"
+              # Only when the image rescored (scripts/ci/dock.sh): the scoring power of every DockTScore model.
+              for report in scoring_power.txt scoring_power.csv; do
+                [ -f "ci_collect/$setup/$report" ] && cp "ci_collect/$setup/$report" "$results/${setup}_$report"
+              done
+              if [ -f "$results/${setup}_scoring_power.txt" ]; then
+                { echo '```'; head -8 "$results/${setup}_scoring_power.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+              fi
               { echo '```'; cat "$results/${setup}_success_rate.txt"; grep '^\[warn\]' "ci_collect/$setup.log" || true; echo '```'; } \
                 >> "$GITHUB_STEP_SUMMARY"
             else
@@ -300,8 +329,11 @@ jobs:
           for setup in steadystate_symmetric generational_ocl_symmetric; do
             # <setup>_overall.json and <setup>_top1.json
             if [ -f "$results/${setup}_qualification_summary.csv" ]; then
+              # <setup>_<model>_{pearson,r2,spearman,rmse}.json too, when the run was rescored.
+              power=()
+              [ -f "$results/${setup}_scoring_power.csv" ] && power=(--scoring-power "$results/${setup}_scoring_power.csv")
               python3 scripts/ci/badge.py "$results/${setup}_qualification_summary.csv" \
-                --version "$VERSION" -o "dockthor_results/badges/$setup"
+                --version "$VERSION" -o "dockthor_results/badges/$setup" "${power[@]}"
             fi
           done
 

@@ -1,8 +1,6 @@
-"""The <pdb>.toml files of the qualification set: Python values as TOML literals, the --set option, the file layout."""
+"""The <pdb>.toml files of the qualification set: Python values as TOML literals, the file layout."""
 
-import argparse
 import json
-import tomllib
 from pathlib import Path
 
 
@@ -16,18 +14,6 @@ def toml_value(value) -> str:
         return "[" + ",".join(toml_value(v) for v in value) + "]"
     # JSON string escaping is valid for TOML basic strings.
     return json.dumps(str(value))
-
-
-def parse_set_option(text: str) -> tuple[str, object]:
-    """Parse KEY=VALUE; VALUE is read as a TOML literal, else kept as a string."""
-    key, sep, raw = text.partition("=")
-    if not sep or not key.strip():
-        raise argparse.ArgumentTypeError(f"expected KEY=VALUE, got '{text}'")
-    try:
-        value = tomllib.loads(f"v = {raw}")["v"]
-    except tomllib.TOMLDecodeError:
-        value = raw
-    return key.strip().lstrip("-"), value
 
 
 def toml_text(pdb: str, config: dict, comments: dict[str, str] | None = None) -> str:

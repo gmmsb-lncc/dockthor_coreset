@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """
-Write a DockThor TOML for every ligand, with a docking box fitted to the ligand.
+Write a DockThor TOML for every complex of a set, with a docking box fitted to its ligand.
 
-For each ligand topology of --ligand-path (MMFFLigand's <name>.top or <name>_mmff.cif / .mmcif, gzipped too: the
-formats DockThor reads as a ligand), the box is:
+A complex is a directory of the set root holding its ligand (README 1.4):
+
+    <complex>/receptors/<complex>.in            receptor topology
+    <complex>/ligands/<complex>_ligand.top      ligand topology (or MMFFLigand's <complex>_ligand_mmff.cif /
+                                                .mmcif, gzipped too: the formats DockThor reads as a ligand)
+    <complex>/cofactors/*.top                   optional cofactor topologies
+
+For each ligand, the box is:
 
     grid-center  the middle of the ligand's bounding box (all atoms, hydrogens included)
     grid-size    the bounding box's extent on each axis + --padding (half on each side);
@@ -14,19 +20,20 @@ The values are float32, as DockThor reads them, written as the shortest decimal 
 points are counted as DockThor does (int(size / rstep) + 1 per axis, in float32); a grid over DockThor's default
 limit of 1,000,000 points gets `grid-max-points` with that count, so DockThor runs it.
 
-`<complex>.toml` (the ligand name without `_ligand`: 10gs_ligand.top -> 10gs.toml) is written to --output-dir in the
-layout of toml/: output-dir (--run-dir), ligand, receptor (<--receptor-path>/<complex>.in), cofactors-path
-(<--cofactor-path>/<complex>, when it holds .top files) and the grid. Paths are relative to the set root, where
-DockThor runs (scripts/qualification_set.py --config-dir). An existing TOML is kept unless --overwrite.
+`<complex>.toml` is written to --output-dir with output-dir (--run-dir), ligand, receptor, cofactors-path (when
+<complex>/cofactors/ holds .top files) and the grid. The ligand, receptor and cofactors-path are absolute, so DockThor
+finds them from any working directory; generate the TOMLs on the machine (or in the container) that docks. The
+output-dir stays relative, to the directory DockThor runs in (the set root with scripts/qualification_set.py, whose
+-o overrides it). An existing TOML is kept unless --overwrite.
 
-Files of --ligand-path that are not ligand topologies are reported as `Skipped unrecognized <FILE>`; MMFFLigand's
-deprecated copies (new_*, *_new.*) are ignored. When a ligand is there in several formats, the first of .top, .cif,
-.mmcif, .cif.gz, .mmcif.gz is used.
+A file named <complex>_ligand* that is not a ligand topology is reported as `Skipped unrecognized <FILE>`;
+MMFFLigand's deprecated copies (new_*, *_new.*) are ignored. When a ligand is there in several formats, the first of
+.top, .cif, .mmcif, .cif.gz, .mmcif.gz is used.
 
 Examples:
-    python3 scripts/grid_toml_generator.py                       # every ligand/ of the set in ., TOMLs in config/
-    python3 scripts/grid_toml_generator.py ~/dockthor_coreset --padding 10 --box-shape ligand --systems 1bcu 10gs
-    python3 scripts/grid_toml_generator.py --ligand-path poses --output-dir toml_new --rstep 0.3 --overwrite
+    python3 scripts/grid_toml_generator.py v2013-coreset                 # every complex, TOMLs in config/
+    python3 scripts/grid_toml_generator.py v2013-coreset --padding 10 --box-shape ligand --complex 1bcu 10gs
+    python3 scripts/grid_toml_generator.py v2013-coreset --output-dir toml_new --rstep 0.3 --overwrite
 """
 
 import argparse
@@ -36,7 +43,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from coreset.dataset import cofactors_dir  # noqa: E402
+from coreset.dataset import LIGAND_TAG, LIGANDS_DIR, cofactors_dir, complex_dirs, receptor_path  # noqa: E402
 from coreset.gridbox import (  # noqa: E402
     DEFAULT_PADDING,
     DEFAULT_RSTEP,
@@ -45,18 +52,17 @@ from coreset.gridbox import (  # noqa: E402
     GridBox,
     grid_box,
 )
-from coreset.molecules import find_ligands  # noqa: E402
+from coreset.molecules import Ligand, find_ligands  # noqa: E402
 from coreset.tomlfile import write_toml  # noqa: E402
 
-LIGAND_TAG = "_ligand"  # 10gs_ligand.top is the ligand of complex 10gs
 
-
-def complex_name(ligand_name: str) -> str:
-    return ligand_name.removesuffix(LIGAND_TAG)
+def absolute(path: Path) -> str:
+    """A topology path as written in a TOML: absolute, symbolic links resolved."""
+    return path.resolve().as_posix()
 
 
 def relative_to_root(path: Path, root: Path) -> str:
-    """A path as written in a TOML: relative to the set root when it is inside it, else absolute."""
+    """A path as printed in the messages: relative to the set root when it is inside it, else absolute."""
     try:
         return path.resolve().relative_to(root).as_posix()
     except ValueError:
@@ -115,19 +121,14 @@ def parse_args(argv=None):
         type=Path,
         nargs="?",
         default=Path("."),
-        help="Set root: the relative paths below are relative to it, and the TOMLs' paths are written relative to it.",
-    )
-    parser.add_argument("--ligand-path", type=Path, default=Path("ligand"), help="Directory of the ligand topologies.")
-    parser.add_argument(
-        "--receptor-path", type=Path, default=Path("receptor"), help="Directory of the receptors, <complex>.in."
+        help="Set root, one <complex>/ directory per complex.",
     )
     parser.add_argument(
-        "--cofactor-path",
+        "--output-dir",
         type=Path,
-        default=Path("cofactor"),
-        help="Directory of the cofactors, <complex>/*.top (cofactors-path is written only when there are some).",
+        default=Path("config"),
+        help="Where to write <complex>.toml, relative to the set root.",
     )
-    parser.add_argument("--output-dir", type=Path, default=Path("config"), help="Where to write <complex>.toml.")
     parser.add_argument(
         "--run-dir", default="vcoreset_run", help="DockThor's output directory, the output-dir key of the TOMLs."
     )
@@ -150,42 +151,46 @@ def parse_args(argv=None):
         help=f"Grid step (Å), written as grid-rstep only when given; without it DockThor's default {DEFAULT_RSTEP} "
         "is used, for the point count too.",
     )
-    parser.add_argument("--systems", nargs="+", metavar="COMPLEX", help="Only these complexes (default: every ligand).")
+    parser.add_argument("--complex", nargs="+", metavar="COMPLEX", help="Only these complexes (default: every ligand).")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing TOML files.")
     return parser.parse_args(argv)
+
+
+def complex_ligand(root: Path, name: str) -> tuple[Ligand | None, list[Path]]:
+    """The ligand of complex `name`, <name>/ligands/<name>_ligand in the first format DockThor reads, and the files
+    named like it that are not ligand topologies."""
+    ligands, skipped = find_ligands(root / name / LIGANDS_DIR)
+    wanted = name + LIGAND_TAG
+    ligand = next((ligand for ligand in ligands if ligand.name == wanted), None)
+    return ligand, [path for path in skipped if path.name.startswith(wanted)]
 
 
 def main(argv=None) -> int:
     args = parse_args(argv)
     root = args.dataset.expanduser().resolve()
-    ligand_dir, receptor_dir, cofactor_dir, output_dir = (
-        root / path.expanduser() for path in (args.ligand_path, args.receptor_path, args.cofactor_path, args.output_dir)
-    )
-    if not ligand_dir.is_dir():
-        print(f"[error] --ligand-path {ligand_dir} is not a directory", file=sys.stderr)
+    output_dir = root / args.output_dir.expanduser()
+    if not root.is_dir():
+        print(f"[error] {root} is not a directory", file=sys.stderr)
         return 1
 
-    ligands, skipped = find_ligands(ligand_dir)
-    for path in skipped:
-        print(f"Skipped unrecognized {relative_to_root(path, root)}", file=sys.stderr)
+    names = complex_dirs(root)
+    errors = 0
+    if args.complex:
+        if unknown := [name for name in args.complex if name not in names]:
+            print(f"[error] no <complex>/ligands/<complex>_ligand of {' '.join(unknown)} in {root}", file=sys.stderr)
+            errors += len(unknown)
+        names = [name for name in args.complex if name in names]
 
     by_complex = {}
-    errors = 0
-    for ligand in ligands:
-        name = complex_name(ligand.name)
-        if name in by_complex:
-            print(
-                f"[error] {ligand.path.name} and {by_complex[name].path.name} are both ligands of {name}",
-                file=sys.stderr,
-            )
+    for name in names:
+        ligand, skipped = complex_ligand(root, name)
+        for path in skipped:
+            print(f"Skipped unrecognized {relative_to_root(path, root)}", file=sys.stderr)
+        if ligand is None:
+            print(f"[error] {name}: no ligand topology DockThor reads in {name}/{LIGANDS_DIR}/", file=sys.stderr)
             errors += 1
             continue
         by_complex[name] = ligand
-    if args.systems:
-        if unknown := [name for name in args.systems if name not in by_complex]:
-            print(f"[error] no ligand of {' '.join(unknown)} in {ligand_dir}", file=sys.stderr)
-            errors += len(unknown)
-        by_complex = {name: by_complex[name] for name in args.systems if name in by_complex}
 
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"{'Complex':<10} {'Bounding box (Å)':<26} {'Grid size (Å)':<26} {'Grid points':>12}")
@@ -205,17 +210,17 @@ def main(argv=None) -> int:
         if toml_path.exists() and not args.overwrite:
             print(f"[skip] {relative_to_root(toml_path, root)} exists (use --overwrite)")
             continue
-        receptor = receptor_dir / f"{name}.in"
+        receptor = root / receptor_path(name)
         if not receptor.is_file():
             print(f"[error] {name}: missing {receptor}", file=sys.stderr)
             errors += 1
             continue
-        cofactors = cofactors_dir(root, Path(relative_to_root(cofactor_dir, root)), name)
+        cofactors = cofactors_dir(root, name)
         config, comments = toml_config(
             box,
-            relative_to_root(ligand.path, root),
-            relative_to_root(receptor, root),
-            cofactors.as_posix() if cofactors is not None else None,
+            absolute(ligand.path),
+            absolute(receptor),
+            absolute(root / cofactors) if cofactors is not None else None,
             args.run_dir,
             write_rstep=args.rstep is not None,
         )
