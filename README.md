@@ -872,9 +872,10 @@ Each job keeps only its one-row `<pdb>_ligand_docked_success_rate.csv` and, when
   A correlation badge is green from 0.6 up and red below 0.3 or in the wrong direction (a negative `r` means a
   lower score goes with a *weaker* affinity); an RMSE badge is green up to 2 kcal/mol and red past 3.5.
 
-**The rescoring needs `docktscore` in the release image.** `scripts/ci/dock.sh` looks for `/usr/local/bin/docktscore`
-in the image and adds `--docktscore-path` only when it is there; an image without it just docks, the affinity files
-are not written, and the badges keep their last values. To fill them from a run docked by hand, rescore it with
+**The rescoring needs `docktscore` in the release image**, which it carries from DockThor Suite 2.5.1 on (before
+that the image held only the two DockThor builds). `scripts/ci/dock.sh` looks for `/usr/local/bin/docktscore` in the
+image and adds `--docktscore-path` only when it is there, so an older image just docks: the affinity files are not
+written and the badges keep their last values. To fill them from a run docked by hand, rescore it with
 `rescore_results.py` (§4.8), copy its `scoring_power.*` into `dockthor_results/<version>/` as
 `<setup>_scoring_power.*`, and run `scripts/ci/badge.py <summary> --version <v> -o dockthor_results/badges/<setup>
 --scoring-power <setup>_scoring_power.csv`.
