@@ -216,14 +216,16 @@ def test_summarize_results(tmp_path, capsys, monkeypatch):
         (reports / pdb / f"{pdb}_ligand_docked_success_rate.csv").write_text(
             f"complex,execution_time(s),num_top,top1_E,top1_RMSD\n{pdb},1,1,-9,{top1}\n"
         )
-    rates = [
+    rates = [  # the default --rmsd-cutoff is 3.0, so the table runs 0.5, 1.0, ... 3.0
         "        0.5     0.00",
         "          1     0.00",
         "        1.5    50.00",
         "          2    50.00",
+        "        2.5    50.00",
+        "          3    50.00",
     ]
     assert summarize_results.main([str(reports)]) == 0
-    assert (reports / "success_rate.txt").read_text().splitlines()[-4:] == rates
+    assert (reports / "success_rate.txt").read_text().splitlines()[-6:] == rates
     assert read_summary(reports / "qualification_summary.csv")[1]["top1_RMSD"] == "3.4"
 
     # --config-dir counts against its TOMLs: 3def has no report.
@@ -237,6 +239,6 @@ def test_summarize_results(tmp_path, capsys, monkeypatch):
     # --from-summary: only success_rate.txt, in the current directory.
     monkeypatch.chdir(tmp_path)
     assert summarize_results.main(["--from-summary", str(reports / "qualification_summary.csv")]) == 0
-    assert (tmp_path / "success_rate.txt").read_text().splitlines()[-4:] == rates
+    assert (tmp_path / "success_rate.txt").read_text().splitlines()[-6:] == rates
     with pytest.raises(SystemExit):
         summarize_results.main(["--from-summary", "x.csv", "--config-dir", str(config)])

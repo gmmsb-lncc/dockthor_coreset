@@ -67,7 +67,11 @@ def parse_args(argv=None):
         help="With DIR: the summary to write (default DIR/qualification_summary.csv); success_rate.txt goes beside it.",
     )
     parser.add_argument(
-        "--rmsd-cutoff", type=positive, default=2.0, metavar="RMSD", help="Largest RMSD cutoff of success_rate.txt."
+        "--rmsd-cutoff",
+        type=positive,
+        default=3.0,
+        metavar="RMSD",
+        help="Largest RMSD cutoff of success_rate.txt (default 3.0).",
     )
     args = parser.parse_args(argv)
     if args.from_summary is not None and (args.config_dir is not None or args.summary_csv is not None):

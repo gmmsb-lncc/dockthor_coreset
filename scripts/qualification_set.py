@@ -139,11 +139,11 @@ def parse_args(argv=None):
     exe.add_argument(
         "--rmsd-cutoff",
         type=float,
-        default=2.0,
+        default=3.0,
         metavar="RMSD",
         help="Largest RMSD cutoff of success_rate.txt: for each cutoff 0.5, 1.0, ... up to RMSD (rounded up to 0.5) "
         "and each topK, the %% of complexes with topK_RMSD <= cutoff, and in the overall column with "
-        "overall_min_RMSD <= cutoff.",
+        "overall_min_RMSD <= cutoff. Default 3.0.",
     )
     score = parser.add_argument_group("rescoring with DockTScore")
     score.add_argument(

@@ -78,7 +78,11 @@ def parse_args(argv=None):
         "--summary-csv", type=Path, metavar="FILE", help=f"The summary to write (default DIR/{DEFAULT_SUMMARY})."
     )
     parser.add_argument(
-        "--rmsd-cutoff", type=float, default=2.0, metavar="RMSD", help="Largest RMSD cutoff of success_rate.txt."
+        "--rmsd-cutoff",
+        type=float,
+        default=3.0,
+        metavar="RMSD",
+        help="Largest RMSD cutoff of success_rate.txt (default 3.0).",
     )
     parser.add_argument("--skip-done", action="store_true", help="Skip a complex that already has every model's score.")
     args = parser.parse_args(argv)

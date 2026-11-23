@@ -416,7 +416,7 @@ Values that start with `-` must use the `=` form: `--dockthor-args='--seed 7'` w
 | `--mpi-args=ARGS` | — | Extra launcher arguments, e.g. `--mpi-args='--oversubscribe --bind-to none'` |
 | `--dockthor-args=ARGS` | — | Extra DockThor command-line options for every complex; they take precedence over the TOMLs |
 | `--summary-csv FILE` | §5.3 | Path of the summary CSV; `success_rate.txt` goes next to it |
-| `--rmsd-cutoff RMSD` | §5.4 | Largest cutoff of `success_rate.txt`: 0.5, 1.0, ... up to `RMSD` (rounded up to 0.5); default 2.0 |
+| `--rmsd-cutoff RMSD` | §5.4 | Largest cutoff of `success_rate.txt`: 0.5, 1.0, ... up to `RMSD` (rounded up to 0.5); default 3.0 |
 | `--skip-done` | off | Skip complexes that already have a `*_docked.csv` in `<output-dir>/<pdb>/`: rerun the same command to resume |
 | `--stop-on-error` | off | Stop at the first complex whose DockThor call fails (default: report it and go on) |
 | `--dry-run` | off | Print the DockThor commands without running them |
